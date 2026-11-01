@@ -1,0 +1,8 @@
+{
+  "name": "ed25519",
+  "description": "Points at the ed25519 sources bundled inside the MeshCore lib dep (MeshCore's library.json doesn't export them)",
+  "build": {
+    "srcDir": "../../.pio/libdeps/cardputer_adv_lora1262/MeshCore/lib/ed25519",
+    "includeDir": "../../.pio/libdeps/cardputer_adv_lora1262/MeshCore/lib/ed25519"
+  }
+}
