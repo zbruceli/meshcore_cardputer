@@ -11,6 +11,8 @@
 #define DIRECT_SEND_PERHOP_FACTOR         6.0f
 #define DIRECT_SEND_PERHOP_EXTRA_MILLIS   250
 
+#define CLOCK_SANE_MIN  1767225600   // 1 Jan 2026: ignore adverts from nodes with an unset clock
+
 ChatMesh::ChatMesh(mesh::Radio& radio, mesh::RNG& rng, mesh::RTCClock& rtc, SimpleMeshTables& tables)
   : BaseChatMesh(radio, *new ArduinoMillis(), rng, rtc, *new StaticPoolPacketManager(16), tables) { }
 
@@ -66,8 +68,9 @@ uint32_t ChatMesh::calcDirectTimeoutMillisFor(uint32_t pkt_airtime_millis, uint8
 // ---- receive ----
 
 void ChatMesh::onDiscoveredContact(ContactInfo& contact, bool is_new, uint8_t path_len, const uint8_t* path) {
-  // No GPS/phone to set the clock: take it from the first (signed) advert newer than our clock.
-  if (!clock_synced && contact.last_advert_timestamp > now()) {
+  // No GPS/phone to set the clock: take it from the first (signed) advert heard this boot.
+  // Adverts older than what we already know of that contact are dropped as replays by BaseChatMesh.
+  if (!clock_synced && contact.last_advert_timestamp > CLOCK_SANE_MIN) {
     getRTCClock()->setCurrentTime(contact.last_advert_timestamp);
     contact.lastmod = contact.last_advert_timestamp;
     clock_synced = true;

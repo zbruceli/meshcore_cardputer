@@ -49,7 +49,7 @@ void drawStatus(const char* title) {
   canvas.setTextColor(batt_pct <= 10 ? C_RED : C_BG);
   canvas.drawString(s, 166, 0);
   canvas.setTextColor(C_BG);
-  fmtTime(s, the_mesh.now());
+  if (the_mesh.clockSynced()) fmtTime(s, the_mesh.now()); else strcpy(s, "--:--");
   canvas.drawString(s, 200, 0);
 }
 

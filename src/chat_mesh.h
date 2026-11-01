@@ -58,6 +58,7 @@ public:
   bool sendChannel(int channel_idx, const char* text);
   void sendDM(ContactInfo& to, const char* text);
 
+  bool clockSynced() const { return clock_synced; }
   ContactInfo* contactByConv(const uint8_t conv[]) { return lookupContactByPubKey(&conv[1], CONV_ID_LEN - 1); }
   int channelByConv(const uint8_t conv[]);
   const uint8_t* selfPubKey() const { return self_id.pub_key; }

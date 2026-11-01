@@ -18,7 +18,7 @@
 enum KeyCode { K_NONE, K_CHAR, K_UP, K_DOWN, K_LEFT, K_RIGHT, K_ENTER, K_BACK, K_DEL, K_TAB };
 struct Key { uint8_t code; char ch; bool fn; };
 
-enum Screen { S_REGION, S_NAME, S_CONFIRM, S_INBOX, S_CHAT, S_CONTACTS, S_REPEATERS, S_CONTACT, S_RADIO, S_SETTINGS };
+enum Screen { S_REGION, S_NAME, S_TZ, S_CONFIRM, S_INBOX, S_CHAT, S_CONTACTS, S_REPEATERS, S_CONTACT, S_RADIO, S_SETTINGS };
 
 extern M5Canvas canvas;
 extern const uint8_t BRIGHTNESS_LEVELS[4];

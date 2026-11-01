@@ -58,7 +58,7 @@ static void applyPreset(int i) {
 }
 
 static void drawRegion() {
-  drawStatus(from_settings ? "SET Region" : "SETUP 1/3");
+  drawStatus(from_settings ? "SET Region" : "SETUP 1/4");
   for (int r = 0; r < BODY_ROWS && top + r < NUM_PRESETS; r++) {
     char f[10];
     snprintf(f, sizeof(f), "%.3f", PRESETS[top + r].freq);
@@ -88,7 +88,7 @@ static void keyRegion(const Key& k) {
 }
 
 static void drawName() {
-  drawStatus(from_settings ? "SET Name" : "SETUP 2/3");
+  drawStatus(from_settings ? "SET Name" : "SETUP 2/4");
   drawRow(0, false, "Your name on the mesh:");
   drawInput(2, input);
   drawRow(4, false, "Others see this name.", NULL, C_DIM);
@@ -103,22 +103,46 @@ static void keyName(const Key& k) {
       prefsSave();
       go(S_SETTINGS);
     } else {
-      go(S_CONFIRM);
+      go(S_TZ);
     }
   } else if (k.code == K_BACK) {
     go(from_settings ? S_SETTINGS : S_REGION);
   }
 }
 
+static void drawTz() {
+  char s[16];
+  drawStatus("SETUP 3/4");
+  drawRow(0, false, "Your time zone:");
+  snprintf(s, sizeof(s), "< UTC%+d >", prefs.tz_hours);
+  drawRow(2, false, s);
+  drawRow(4, false, "e.g. US Pacific -8, summer -7", NULL, C_DIM);
+  drawRow(5, false, "Clock sets from the mesh.", NULL, C_DIM);
+  drawHints(", / change  ENT ok  ` back");
+}
+
+static void keyTz(const Key& k) {
+  if (k.code == K_LEFT || k.code == K_RIGHT) {
+    prefs.tz_hours = constrain(prefs.tz_hours + (k.code == K_RIGHT ? 1 : -1), -12, 14);
+  } else if (k.code == K_ENTER) {
+    go(S_CONFIRM);
+  } else if (k.code == K_BACK) {
+    StrHelper::strncpy(input, prefs.name, sizeof(prefs.name));
+    go(S_NAME);
+  }
+}
+
 static void drawConfirm() {
   char s[COLS + 1];
-  drawStatus("SETUP 3/3");
+  drawStatus("SETUP 4/4");
   drawRow(0, false, "Name", prefs.name);
   drawRow(1, false, "Region", PRESETS[prefs.region].title);
   snprintf(s, sizeof(s), "%.3f MHz  %d dBm", prefs.freq, prefs.tx_power);
   drawRow(2, false, s);
   snprintf(s, sizeof(s), "SF%d  BW%g  CR%d", prefs.sf, prefs.bw, prefs.cr);
   drawRow(3, false, s);
+  snprintf(s, sizeof(s), "UTC%+d", prefs.tz_hours);
+  drawRow(4, false, "Time zone", s);
   drawRow(5, false, "ENT: go on air, say hello");
   drawHints("ENT start   ` back");
 }
@@ -136,7 +160,7 @@ static void keyConfirm(const Key& k) {
     convOfChannel(conv, pub.channel);
     openChat(conv, S_INBOX);
   } else if (k.code == K_BACK) {
-    go(S_NAME);
+    go(S_TZ);
   }
 }
 
@@ -522,6 +546,7 @@ void screenDraw() {
   switch (screen) {
     case S_REGION:    drawRegion(); break;
     case S_NAME:      drawName(); break;
+    case S_TZ:        drawTz(); break;
     case S_CONFIRM:   drawConfirm(); break;
     case S_INBOX:     drawInbox(); break;
     case S_CHAT:      drawChat(); break;
@@ -559,6 +584,7 @@ void screenKey(const Key& k) {
   switch (screen) {
     case S_REGION:    keyRegion(k); break;
     case S_NAME:      keyName(k); break;
+    case S_TZ:        keyTz(k); break;
     case S_CONFIRM:   keyConfirm(k); break;
     case S_INBOX:     keyInbox(k); break;
     case S_CHAT:      keyChat(k); break;
