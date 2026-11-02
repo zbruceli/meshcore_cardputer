@@ -1,95 +1,68 @@
 # Roadmap & Plan
 
-Principle: ship the smallest thing that works on real hardware, then grow. Each phase ends with a flashable,
-tested build. Requirements referenced here are defined in `PRD.md`.
+Ship the smallest thing that works on real hardware, then grow. Each phase ends with a flashable build tested on
+the device. Requirements are in `PRD.md`; code layout and rules in `CLAUDE.md`.
 
-## Architecture (fixed for all phases)
+Legend: ✅ done and checked on the device · 🟡 built, not yet verified · ⬜ to do
 
-```
-platformio.ini          one env: cardputer_adv_lora1262; MeshCore pinned by commit in lib_deps
-src/
-  main.cpp              setup()/loop(): board init, mesh.loop(), ui.loop(), power tick
-  target.h/.cpp         Cardputer-Adv + Cap LoRa init (MeshCore includes <target.h> by this name)
-  presets.h             region preset table (copied from api.meshcore.nz, 868–923 MHz only)
-  chat_mesh.h/.cpp      ChatMesh : BaseChatMesh — callbacks push into store, send helpers, discovery
-  store.h/.cpp          prefs, contacts, channels, message ring; load/save on flash FS
-  ui.h/.cpp             drawing primitives (status bar, list, hint bar, text wrap) + screen state machine
-  ui_screens.cpp        one draw()/key() pair per screen (split further only if > ~800 lines)
-```
+## MVP — "talk on Public, DM a friend" ✅
 
-Rules: no UI framework (no LVGL), no event bus, no plugin system. Screens are an `enum` + `switch`.
-Draw into one full-screen `M5Canvas` sprite and push it (no flicker), redraw only when state is dirty.
-
-## MVP — "talk on Public, DM a friend"
-
-Goal: a phone-free device that can join a mesh and chat. Target ~2 weeks.
-
-1. **Project skeleton**: PlatformIO env, M5Cardputer lib, MeshCore lib dep, board init, "hello" screen, serial log.
-2. **Radio up**: SX1262 via MeshCore `CustomSX1262Wrapper` with Cap pins + I/O expander P0 high, DIO2 RF switch,
-   TCXO; verify RX of adverts printed to serial.
-3. **Identity + store**: generate/persist keypair, prefs (name, radio params), contacts, channels.
-4. **ChatMesh**: subclass `BaseChatMesh` (start from `simple_secure_chat`), Public channel, DM send with ACK/retry,
-   advert send on boot after onboarding.
-5. **UI shell**: palette, font, status bar, hint bar, tab switching, list widget, text input line.
-6. **Onboarding**: region → name → confirm (PRD 5.1). No TX before completion.
-7. **Screens**: MSG (inbox → conversation), CON (list → details → message), RAD (radio info + send advert), SET (basic).
-8. **Basic power**: backlight dim/off timeout, CPU 80 MHz when screen off, key-to-wake.
+✅ Radio up (SX1262 + Cap RF switch), identity, persistence · ✅ onboarding (region → name → time zone → confirm,
+no TX before) · ✅ Public send/receive · ✅ inbox, chat, contacts, radio, settings screens · ✅ screen dim/off,
+80 MHz when off
 
 **Exit criteria**
-- Exchange Public and DM messages (with ✓✓ ACK) with an official MeshCore phone app on the same preset.
-- Survives reboot with identity, contacts, settings and recent messages intact.
-- Free heap ≥ 60 KB after boot with 50 contacts loaded.
+- ✅ Public messages both ways with the official app's network
+- 🟡 DM with `[ok]` ACK — needs a second node
+- ✅ Survives reboot with identity, contacts, settings, messages
+- 🟡 Free heap with 50 contacts (228 KB free at boot with few contacts)
 
-## Phase 1 — "full client"
+## Phase 1 — "full client" ✅ (on device, interop checks pending)
 
-1. (done) Private channels: `#hashtag` and name + PSK (base64 or hex) join, delete; unread counts per channel.
-   Inbox: `A` add, `X` twice to leave a channel / delete a DM thread. Channels persist in `/channels`.
-2. (done) Contact management: favourite, delete, reset path, share (zero-hop), filter-by-typing.
-   Auto-add by type (`chat+rpt` default, as MeshCore suggests; `all` / `chat` / `off`) + "overwrite oldest"
-   (favourites never overwritten). Adverts not added are listed with `+`; Enter adds them.
-3. (done) **Repeater discovery** on RPT (`D`): `CTL_TYPE_NODE_DISCOVER_REQ/RESP`, 60 s window, sorted by SNR,
-   unknown repeaters can be added as direct contacts.
-4. (done) Full settings: manual radio params (freq/BW/SF/CR), path hash size, auto-add, overwrite, TZ offset,
-   manual clock. Location sharing moved to Phase 2 (needs the GPS; no location source before that).
-5. (done) Notifications: toast + beep, beep off = mute. Message log keeps per-conversation history fairly:
-   when full, the conversation with the most messages loses its oldest.
-6. (done) Radio info extras: noise floor, RX/TX counters, TX airtime %.
-7. (done) Clock: GPS time (NMEA RMC with a valid fix, re-applied hourly) wins; until then two different mesh
-   senders whose timestamps agree within 5 min; or set by hand. SET shows the source.
+- ✅ Channels: `#hashtag` / private (name + base64 or hex key) join; leave; delete DM threads; persisted
+- ✅ Contacts: favourite, delete, reset path, share, type-to-filter; auto-add by type (chat+repeaters default)
+  with overwrite-oldest; un-added adverts listed with `+`
+- 🟡 Repeater discovery (`D` on RPT): 60 s, sorted by SNR, add unknown repeaters
+- ✅ Settings: frequency / BW / SF / CR, path hash size, auto-add, overwrite, time zone, manual clock
+- ✅ Fair message history (busiest conversation evicted first), beep / mute, TX airtime %
+- ✅ Clock from GPS (verified), else two agreeing mesh senders, else manual
+- ✅ Status bar spacing
 
-**Exit criteria**: join a hashtag channel the phone app also joined and chat; discovery shows the same repeaters
-as the phone app; all settings round-trip through a reboot.
+**Exit criteria**
+- 🟡 Hashtag channel shared with the phone app, messages both ways (a message was received on a joined channel)
+- 🟡 Discovery shows the same repeaters as the phone app
+- ✅ Settings survive a reboot
 
-## Phase 2 — "all-day battery & power user"
+## Phase 2 — "all-day battery & power user" ⬜
 
-1. Automatic light sleep when screen is off; wake on LoRa DIO1 and keyboard interrupt (verify TCA8418 INT pin).
-2. Power-off (deep sleep) + wake on G0; low-battery warning / cutoff.
-3. RX boosted gain toggle (power profile setting); measure and document battery life.
-4. Repeater login (guest/admin) + status view; ping/trace path to a contact.
-5. GPS (Cap ATGM336H): fix display on RAD screen, optional location in adverts (location sharing setting).
-   (Clock from GPS already done in Phase 1.) Find a way to power the GPS down when not needed.
+1. Light sleep while the screen is off; wake on LoRa DIO1 and keyboard interrupt (find the TCA8418 INT pin).
+2. Power off (deep sleep) + wake on G0; low-battery warning and cut-off.
+3. RX boosted-gain toggle; measure and document battery life.
+4. Repeater login (guest/admin) + status; ping / trace path to a contact.
+5. GPS: fix / satellites on RAD, optional location in adverts (sharing setting), power the GPS down when not
+   needed (no enable pin found yet).
 
-**Exit criteria**: ≥ 24 h idle listening measured; no missed messages in light sleep across a 1 h test.
+**Exit criteria**: ≥ 24 h idle listening measured; no missed messages in light sleep over a 1 h test.
 
-## Phase 3 — "nice to have" (only if asked for)
+## Phase 3 — "nice to have" (only if asked for) ⬜
 
 - Room server login + post/read.
-- QR code to share own contact (`meshcore://` format from MeshCore `docs/qr_codes.md`).
-- Optional BLE companion mode (reuse MeshCore `companion_radio` frames) for users who also want a phone.
-- SD card message export; theme accent choices (Ripple-style small palette).
+- QR code to share own contact (`meshcore://`, MeshCore `docs/qr_codes.md`).
+- Optional BLE companion mode for users who also want a phone.
+- SD card message export; accent colour choices.
 
 ## Risks & open questions
 
 | Risk | Mitigation |
 |---|---|
-| RAM without PSRAM | Fixed-size arrays, small limits (100 contacts, 8 channels, message ring), measure heap each phase |
-| Keyboard interrupt pin / light-sleep wake on Cardputer-Adv unknown | Spike early in Phase 2; fall back to polling at low CPU freq |
-| MeshCore API churn | Pin commit; bump deliberately, re-run interop test |
-| Regional legality | Onboarding blocks TX until a preset is chosen; 433 MHz presets hidden (hardware is 868–923 only) |
-| Hashtag key derivation must match the apps | Names are lowercased before `sha256("#name")`; verify against the official app with a known channel |
+| RAM without PSRAM | Fixed-size arrays and small limits; check heap after each phase |
+| Light-sleep wake via keyboard on the Cardputer-Adv unknown | Spike early in Phase 2; fall back to polling at 80 MHz |
+| MeshCore API churn | Commit pinned; bump deliberately and re-test interop |
+| Hashtag keys must match the apps | Names are lowercased before hashing — confirm with the app on a known channel |
+| GPS always powered | Look for a standby command / power control in Phase 2 |
+| Device sometimes stays in download mode after flashing | Power-cycle without holding G0 |
 
-## Testing approach
+## Testing
 
-- Manual on-device test checklist per phase (kept in `docs/test_checklist.md` once the code exists).
-- Interop reference: official MeshCore phone app + one companion radio on the same preset.
-- Serial log (`MESH_DEBUG`) for protocol issues; heap/airtime printed on RAD screen.
+- Manual on-device checks per phase, against the official MeshCore app on the same preset.
+- Serial log at 115200 (`pio device monitor`): boot line prints free heap.
