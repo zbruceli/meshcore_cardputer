@@ -1,0 +1,58 @@
+# Push a tag vX.Y.Z (matching FW_VERSION in platformio.ini) to build the merged firmware, attach it to a
+# GitHub Release and publish the web installer (web/) to GitHub Pages.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # create the release
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio
+
+      - name: Tag must match FW_VERSION
+        run: |
+          V=$(sed -n "s/.*FW_VERSION='\"\([^\"]*\)\"'.*/\1/p" platformio.ini)
+          [ "v$V" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME but platformio.ini says v$V"; exit 1; }
+
+      - run: ./scripts/build_release.sh
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.bin --title "$GITHUB_REF_NAME" --generate-notes
+
+      - name: Web installer
+        run: |
+          mkdir -p _site
+          cp web/* _site/
+          cp dist/*.bin _site/firmware.bin
+          sed -i "s/VERSION/${GITHUB_REF_NAME#v}/g" _site/index.html _site/manifest.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

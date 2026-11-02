@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeshCore Cardputer installer</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    :root { --bg: #000; --amber: #ff9500; --dim: #7a4800; }
+    body { margin: 0; background: var(--bg); color: var(--amber); font: 16px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+    main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+    h1 { font-size: 24px; margin: 0 0 4px; }
+    .sub { color: var(--dim); margin: 0 0 24px; }
+    ol { padding-left: 20px; }
+    li { margin-bottom: 8px; }
+    a { color: var(--amber); }
+    .note { color: var(--dim); font-size: 14px; }
+    esp-web-install-button { display: block; margin: 24px 0; }
+    esp-web-install-button button {
+      background: var(--amber); color: var(--bg); border: 0; padding: 12px 20px;
+      font: bold 16px ui-monospace, Menlo, Consolas, monospace; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MeshCore Cardputer</h1>
+    <p class="sub">Standalone MeshCore chat for the M5Stack Cardputer-Adv + Cap LoRa-1262 · vVERSION</p>
+
+    <ol>
+      <li>Use Chrome or Edge on a computer (Web Serial).</li>
+      <li>Plug in the Cardputer-Adv with a USB-C data cable and switch it on.</li>
+      <li>Press Install and pick the Cardputer's port (usually “USB JTAG/serial debug unit”).</li>
+      <li>When it's done, switch the Cardputer off and on (don't hold G0) and follow the setup on screen.</li>
+    </ol>
+
+    <esp-web-install-button manifest="manifest.json">
+      <button slot="activate">Install vVERSION</button>
+      <span slot="unsupported">This browser can't flash devices. Use Chrome or Edge on a computer.</span>
+      <span slot="not-allowed">Flashing needs an HTTPS page.</span>
+    </esp-web-install-button>
+
+    <p class="note">
+      Updating? Don't erase, and your contacts, channels and messages are kept. Erasing gives the device a new
+      identity. If the port doesn't show up, hold G0 while switching on to enter download mode.
+    </p>
+    <p class="note">
+      <a href="https://github.com/zbruceli/meshcore_cardputer">Source, docs and releases on GitHub</a> · MIT license ·
+      built on <a href="https://github.com/meshcore-dev/MeshCore">MeshCore</a>
+    </p>
+  </main>
+</body>
+</html>

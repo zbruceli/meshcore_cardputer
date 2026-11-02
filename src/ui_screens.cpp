@@ -778,7 +778,7 @@ static void keyRadio(const Key& k) {
 // ================================================================ settings
 
 enum { SET_NAME, SET_REGION, SET_FREQ, SET_BW, SET_SF, SET_CR, SET_TX, SET_HASH, SET_AUTOADD, SET_OVERWRITE,
-       SET_BRIGHT, SET_SCREEN, SET_BEEP, SET_TZ, SET_CLOCK, SET_ID, SET_RESET, SET_COUNT };
+       SET_BRIGHT, SET_SCREEN, SET_BEEP, SET_TZ, SET_CLOCK, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
 static const float BWS[] = { 7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500 };
 #define NUM_BWS (int)(sizeof(BWS) / sizeof(BWS[0]))
 struct AddMode { uint8_t mask; const char* label; };
@@ -835,6 +835,7 @@ static void drawSettings() {
         break;
       }
       case SET_ID:      label = "My ID"; mesh::Utils::toHex(v, the_mesh.selfPubKey(), 4); break;
+      case SET_VERSION: label = "Firmware"; snprintf(v, sizeof(v), "v%s", FW_VERSION); break;
       case SET_RESET:   label = armed ? "ENT again to WIPE ALL" : "Factory reset"; break;
     }
     drawRow(r, i == sel, label, v, i == SET_RESET && armed ? C_RED : C_AMBER);

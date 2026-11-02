@@ -58,7 +58,12 @@ src/ui_screens.cpp   per-screen draw()/key() + dispatch
 pio run                       # build
 pio run -t upload             # flash (USB); if it stays in download mode, power-cycle without G0
 pio device monitor            # serial log (115200)
+./scripts/build_release.sh    # merged image dist/meshcore-cardputer-v<FW_VERSION>.bin (flash at 0x0)
 ```
+
+Release: bump `FW_VERSION` in `platformio.ini`, commit, push a tag `v<FW_VERSION>`. `.github/workflows/release.yml`
+builds the merged `.bin`, attaches it to a GitHub Release and publishes `web/` (ESP Web Tools installer) to
+GitHub Pages. M5Burner (which also feeds Launcher) is a manual upload of the same `.bin`.
 
 ## Working rules
 

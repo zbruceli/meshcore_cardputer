@@ -33,7 +33,22 @@ talks to MeshCore phone apps, companion radios, Ripple devices and repeaters.
 
 Make sure the antenna is attached before you finish onboarding.
 
-## Build and flash
+## Install
+
+Every release is one file, `meshcore-cardputer-vX.Y.Z.bin`, flashed at offset `0x0`. Pick any way:
+
+- **Web installer** (easiest): open https://zbruceli.github.io/meshcore_cardputer/ in Chrome or Edge, plug in
+  the Cardputer and press Install.
+- **M5Burner** / **Launcher**: find "MeshCore Cardputer" in the Cardputer firmware list.
+- **MeshCore web flasher**: https://flasher.meshcore.io → Custom Firmware → pick the `.bin` from
+  [Releases](https://github.com/zbruceli/meshcore_cardputer/releases).
+- **esptool**: `esptool.py --chip esp32s3 write_flash 0x0 meshcore-cardputer-vX.Y.Z.bin`
+
+Updating keeps your identity, contacts, channels and messages unless you erase the flash. After flashing,
+switch the Cardputer off and on (without holding G0). If the computer doesn't see it, hold G0 while switching
+it on to enter download mode.
+
+## Build from source
 
 Needs [PlatformIO](https://platformio.org/) (CLI or the VS Code extension).
 

@@ -27,7 +27,7 @@ void setup() {
   if (radio_ok) the_mesh.applyRadio();
 
   uiBegin();
-  Serial.printf("boot ok, free heap %u\n", ESP.getFreeHeap());
+  Serial.printf("MeshCore Cardputer v%s, boot ok, free heap %u\n", FW_VERSION, ESP.getFreeHeap());
 }
 
 void loop() {
