@@ -3,3 +3,6 @@
 *.bin
 dist/
 backup/
+
+# local investigation notes and serial logs (not versioned)
+notes/
