@@ -42,12 +42,20 @@ Goal: a phone-free device that can join a mesh and chat. Target ~2 weeks.
 
 ## Phase 1 — "full client"
 
-1. Private channels: `#hashtag` and name + PSK join, delete; unread counts per channel.
-2. Contact management: favourite, delete, reset path, share (zero-hop), filter-by-typing, auto-add toggle.
-3. **Repeater discovery** screen (`CTL_TYPE_NODE_DISCOVER_REQ/RESP`, 60 s window, sort by SNR).
-4. Full settings: manual radio params, path hash size, location sharing, TZ offset, manual clock.
-5. Notifications: toast + beep, mute toggle; per-conversation message history persisted.
-6. Radio info extras: noise floor, RX/TX counters, airtime.
+1. (done) Private channels: `#hashtag` and name + PSK (base64 or hex) join, delete; unread counts per channel.
+   Inbox: `A` add, `X` twice to leave a channel / delete a DM thread. Channels persist in `/channels`.
+2. (done) Contact management: favourite, delete, reset path, share (zero-hop), filter-by-typing.
+   Auto-add by type (`chat+rpt` default, as MeshCore suggests; `all` / `chat` / `off`) + "overwrite oldest"
+   (favourites never overwritten). Adverts not added are listed with `+`; Enter adds them.
+3. (done) **Repeater discovery** on RPT (`D`): `CTL_TYPE_NODE_DISCOVER_REQ/RESP`, 60 s window, sorted by SNR,
+   unknown repeaters can be added as direct contacts.
+4. (done) Full settings: manual radio params (freq/BW/SF/CR), path hash size, auto-add, overwrite, TZ offset,
+   manual clock. Location sharing moved to Phase 2 (needs the GPS; no location source before that).
+5. (done) Notifications: toast + beep, beep off = mute. Message log keeps per-conversation history fairly:
+   when full, the conversation with the most messages loses its oldest.
+6. (done) Radio info extras: noise floor, RX/TX counters, TX airtime %.
+7. (done) Clock: GPS time (NMEA RMC with a valid fix, re-applied hourly) wins; until then two different mesh
+   senders whose timestamps agree within 5 min; or set by hand. SET shows the source.
 
 **Exit criteria**: join a hashtag channel the phone app also joined and chat; discovery shows the same repeaters
 as the phone app; all settings round-trip through a reboot.
@@ -58,7 +66,8 @@ as the phone app; all settings round-trip through a reboot.
 2. Power-off (deep sleep) + wake on G0; low-battery warning / cutoff.
 3. RX boosted gain toggle (power profile setting); measure and document battery life.
 4. Repeater login (guest/admin) + status view; ping/trace path to a contact.
-5. GPS (Cap ATGM336H): fix display on RAD screen, optional location in adverts, sets clock from GPS.
+5. GPS (Cap ATGM336H): fix display on RAD screen, optional location in adverts (location sharing setting).
+   (Clock from GPS already done in Phase 1.) Find a way to power the GPS down when not needed.
 
 **Exit criteria**: ≥ 24 h idle listening measured; no missed messages in light sleep across a 1 h test.
 
@@ -77,7 +86,7 @@ as the phone app; all settings round-trip through a reboot.
 | Keyboard interrupt pin / light-sleep wake on Cardputer-Adv unknown | Spike early in Phase 2; fall back to polling at low CPU freq |
 | MeshCore API churn | Pin commit; bump deliberately, re-run interop test |
 | Regional legality | Onboarding blocks TX until a preset is chosen; 433 MHz presets hidden (hardware is 868–923 only) |
-| Hashtag key derivation must match the apps | Verify against official app with a known channel before shipping P1 |
+| Hashtag key derivation must match the apps | Names are lowercased before `sha256("#name")`; verify against the official app with a known channel |
 
 ## Testing approach
 

@@ -36,7 +36,7 @@ void ChatMesh::begin() {
   resetContacts();
   contactsLoad(*this);
   bootstrapRTCfromContacts();
-  addChannel("Public", PUBLIC_GROUP_PSK);
+  channelsLoad(*this);
 }
 
 void ChatMesh::applyRadio() {
@@ -68,17 +68,79 @@ uint32_t ChatMesh::calcDirectTimeoutMillisFor(uint32_t pkt_airtime_millis, uint8
 // ---- receive ----
 
 void ChatMesh::onDiscoveredContact(ContactInfo& contact, bool is_new, uint8_t path_len, const uint8_t* path) {
-  // No GPS/phone to set the clock: take it from the first (signed) advert heard this boot.
-  // Adverts older than what we already know of that contact are dropped as replays by BaseChatMesh.
-  if (!clock_synced && contact.last_advert_timestamp > CLOCK_SANE_MIN) {
-    getRTCClock()->setCurrentTime(contact.last_advert_timestamp);
-    contact.lastmod = contact.last_advert_timestamp;
-    clock_synced = true;
+  clockVote(contact.last_advert_timestamp, contact.id.pub_key[0]);
+  if (is_new && !lookupContactByPubKey(contact.id.pub_key, PUB_KEY_SIZE)) {   // heard, but not added
+    int i = 0;
+    while (i < num_heard && !heard[i].id.matches(contact.id)) i++;
+    if (i == num_heard) {
+      if (num_heard == MAX_HEARD) i = 0; else num_heard++;
+    }
+    memmove(&heard[i], &heard[i + 1], (num_heard - 1 - i) * sizeof(ContactInfo));   // move to the end
+    heard[num_heard - 1] = contact;
+    heard[num_heard - 1].lastmod = now();
+    return;
   }
   storeMarkContactsDirty();
 }
 
+// Raw advert packets, kept so a contact can be shared (re-broadcast zero-hop). Same layout as companion_radio.
+static void blobPath(char* path, const uint8_t key[]) {
+  strcpy(path, "/bl/");
+  mesh::Utils::toHex(&path[4], key, 8);
+}
+
+int ChatMesh::getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_buf[]) {
+  char path[24];
+  blobPath(path, key);
+  File f = SPIFFS.open(path, "r");
+  if (!f) return 0;
+  int len = f.read(dest_buf, 255);
+  f.close();
+  return len;
+}
+
+bool ChatMesh::putBlobByKey(const uint8_t key[], int key_len, const uint8_t src_buf[], int len) {
+  char path[24];
+  blobPath(path, key);
+  File f = SPIFFS.open(path, "w", true);
+  if (!f) return false;
+  bool ok = f.write(src_buf, len) == (size_t)len;
+  f.close();
+  return ok;
+}
+
+void ChatMesh::onControlDataRecv(mesh::Packet* packet) {
+  // CTL_TYPE_NODE_DISCOVER_RESP from a repeater: [type|node_type] [snr x4] [tag:4] [pub_key:32]
+  if ((packet->payload[0] & 0xF0) != CTL_TYPE_NODE_DISCOVER_RESP || packet->payload_len < 6 + PUB_KEY_SIZE) return;
+  if (!discovering() || memcmp(&packet->payload[2], &disc_tag, 4) != 0) return;
+  const uint8_t* key = &packet->payload[6];
+  for (int i = 0; i < num_discovered; i++) {
+    if (memcmp(discovered[i].pub_key, key, PUB_KEY_SIZE) == 0) return;
+  }
+  if (num_discovered == MAX_DISCOVERED) return;
+  Discovered& d = discovered[num_discovered++];
+  memcpy(d.pub_key, key, PUB_KEY_SIZE);
+  d.snr_out4 = (int8_t)packet->payload[1];
+  d.snr_in4 = (int8_t)(packet->getSNR() * 4);
+}
+
+// Until the GPS has a fix, learn the clock from timestamps heard on the mesh. A single node (often a repeater)
+// can have a wrong clock, so only set it once timestamps from two different senders agree within 5 minutes.
+void ChatMesh::clockVote(uint32_t ts, uint8_t src) {
+  if (clockSynced() || ts < CLOCK_SANE_MIN) return;
+  int32_t offset = ts - millis() / 1000;
+  for (int i = 0; i < num_votes && i < 4; i++) {
+    if (vote_src[i] != src && abs(offset - clock_votes[i]) < 300) {
+      setClock(ts, CLOCK_MESH);
+      return;
+    }
+  }
+  vote_src[num_votes % 4] = src;
+  clock_votes[num_votes++ % 4] = offset;
+}
+
 void ChatMesh::onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t sender_timestamp, const char* text) {
+  clockVote(sender_timestamp, from.id.pub_key[0]);
   Msg* m = msgAdd();
   convOfContact(m->conv, from);
   m->ts = now();
@@ -88,6 +150,9 @@ void ChatMesh::onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_
 }
 
 void ChatMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t timestamp, const char* text) {
+  uint8_t src = 0;
+  for (const char* p = text; *p && *p != ':'; p++) src = src * 31 + *p;   // sender name ("name: text")
+  clockVote(timestamp, src);
   Msg* m = msgAdd();
   convOfChannel(m->conv, channel);
   m->ts = now();
@@ -177,6 +242,91 @@ void ChatMesh::checkDMRetries() {
     }
     sendDMAttempt(*m, *to);
   }
+}
+
+// ---- channels ----
+
+int ChatMesh::joinChannel(const char* name, const uint8_t* secret, int secret_len) {
+  ChannelDetails ch;
+  int free_idx = -1;
+  for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
+    if (!getChannel(i, ch)) continue;
+    if (ch.name[0] && memcmp(ch.channel.secret, secret, secret_len) == 0) return i;   // already joined
+    if (!ch.name[0] && free_idx < 0) free_idx = i;
+  }
+  if (free_idx < 0) return -1;
+  memset(&ch, 0, sizeof(ch));
+  memcpy(ch.channel.secret, secret, secret_len);
+  StrHelper::strncpy(ch.name, name, sizeof(ch.name));
+  setChannel(free_idx, ch);
+  channelsSave(*this);
+  return free_idx;
+}
+
+void ChatMesh::leaveChannel(int idx) {
+  ChannelDetails ch;
+  if (!getChannel(idx, ch)) return;
+  uint8_t conv[CONV_ID_LEN];
+  convOfChannel(conv, ch.channel);
+  msgsDeleteConv(conv);
+  memset(&ch, 0, sizeof(ch));   // an empty name marks a free slot (skipped by searchChannelsByHash)
+  setChannel(idx, ch);
+  channelsSave(*this);
+}
+
+// ---- contacts ----
+
+void ChatMesh::deleteContact(ContactInfo& c) {
+  uint8_t conv[CONV_ID_LEN];
+  convOfContact(conv, c);
+  char path[24];
+  blobPath(path, c.id.pub_key);
+  SPIFFS.remove(path);
+  removeContact(c);   // invalidates c
+  msgsDeleteConv(conv);
+  storeMarkContactsDirty();
+}
+
+void ChatMesh::onContactOverwrite(const uint8_t* pub_key) {
+  char path[24];
+  blobPath(path, pub_key);
+  SPIFFS.remove(path);
+}
+
+bool ChatMesh::addHeard(int i) {
+  if (i < 0 || i >= num_heard || !addContact(heard[i])) return false;
+  num_heard--;
+  memmove(&heard[i], &heard[i + 1], (num_heard - i) * sizeof(ContactInfo));
+  storeMarkContactsDirty();
+  return true;
+}
+
+// ---- repeater discovery (same request as companion_radio's discover screen, but with full keys) ----
+
+void ChatMesh::startDiscovery() {
+  uint8_t data[6];
+  data[0] = CTL_TYPE_NODE_DISCOVER_REQ;   // low bit 0 = reply with full public key
+  data[1] = 1 << ADV_TYPE_REPEATER;       // filter: repeaters
+  getRNG()->random(&data[2], 4);
+  memcpy(&disc_tag, &data[2], 4);
+  num_discovered = 0;
+  disc_until = millis() + DISCOVER_MILLIS;
+  mesh::Packet* pkt = createControlData(data, sizeof(data));
+  if (pkt) sendZeroHop(pkt);
+}
+
+bool ChatMesh::addDiscovered(int i) {
+  if (i < 0 || i >= num_discovered) return false;
+  ContactInfo c;
+  memset(&c, 0, sizeof(c));
+  c.id = mesh::Identity(discovered[i].pub_key);
+  mesh::Utils::toHex(c.name, c.id.pub_key, 4);   // real name arrives with its next advert
+  c.type = ADV_TYPE_REPEATER;
+  c.out_path_len = 0;   // it answered a zero-hop request: direct neighbour
+  c.lastmod = now();
+  if (!addContact(c)) return false;
+  storeMarkContactsDirty();
+  return true;
 }
 
 int ChatMesh::channelByConv(const uint8_t conv[]) {

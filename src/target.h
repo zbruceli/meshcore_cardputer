@@ -22,4 +22,6 @@ extern AutoDiscoverRTCClock rtc_clock;
 extern SensorManager sensors;
 
 bool radio_init();
+void gpsBegin();
+uint32_t gpsReadTime();   // UTC epoch once a valid RMC sentence (fix) arrives, else 0. Position is ignored for now.
 mesh::LocalIdentity radio_new_identity();

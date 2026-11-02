@@ -1,3 +1,4 @@
+#include <mbedtls/base64.h>
 #include "ui.h"
 #include "target.h"
 #include "chat_mesh.h"
@@ -9,16 +10,17 @@ static Screen screen;
 static Screen chat_back;               // where Esc goes from a chat
 static Screen contact_back;            // where Esc goes from contact details
 static int sel, top;                   // list cursor
-static char input[MAX_TEXT_LEN + 1];   // compose line / name editor
+static char input[MAX_TEXT_LEN + 1];   // compose line / text editor
 static uint8_t cur_conv[CONV_ID_LEN];  // open chat, or selected contact (as a DM conv id)
 static int chat_scroll;                // lines scrolled up from the newest
-static bool from_settings;             // region/name screens opened from SET
-static bool confirm_reset;
+static bool from_settings;             // region screen opened from SET
+static bool armed;                     // destructive key pressed once, press again to confirm
+static char filter[16];                // contacts: typed name filter
 
 void go(Screen s) {
   screen = s;
   sel = top = 0;
-  confirm_reset = false;
+  armed = false;
 }
 
 bool screenShowsConv(const uint8_t conv[]) {
@@ -33,16 +35,152 @@ static void openChat(const uint8_t conv[], Screen back) {
   screen = S_CHAT;
 }
 
+// channels show their own name ("Public", "#hashtag", private name), DMs "@name"
 static void convName(char* dest, int sz, const uint8_t conv[]) {
   if (conv[0] == CONV_CHANNEL) {
     ChannelDetails ch;
     int idx = the_mesh.channelByConv(conv);
-    snprintf(dest, sz, "#%s", idx >= 0 && the_mesh.getChannel(idx, ch) ? ch.name : "?");
+    snprintf(dest, sz, "%s", idx >= 0 && the_mesh.getChannel(idx, ch) ? ch.name : "?");
   } else {
     ContactInfo* c = the_mesh.contactByConv(conv);
-    if (c) snprintf(dest, sz, "%s", c->name);
-    else snprintf(dest, sz, "?%02x%02x%02x", conv[1], conv[2], conv[3]);
+    if (c) snprintf(dest, sz, "@%s", c->name);
+    else snprintf(dest, sz, "@%02x%02x%02x", conv[1], conv[2], conv[3]);
   }
+}
+
+static void openChannel(int idx, Screen back) {
+  ChannelDetails ch;
+  uint8_t conv[CONV_ID_LEN];
+  the_mesh.getChannel(idx, ch);
+  convOfChannel(conv, ch.channel);
+  openChat(conv, back);
+}
+
+// ================================================================ text editor (name, channel, frequency, clock)
+
+enum { F_NAME, F_CH_NAME, F_CH_KEY, F_FREQ, F_CLOCK };
+struct EditField { const char* title; const char* prompt; const char* help; uint8_t max_len; };
+static const EditField FIELDS[] = {
+  { "SET Name",      "Your name on the mesh:",       "Others see this name.",    31 },
+  { "Add channel",   "#hashtag or private name:",    "#name: key from the name", 30 },
+  { "Add channel",   "Secret key (base64 or hex):",  "16 or 32 byte key",        64 },
+  { "SET Frequency", "Frequency in MHz:",            "868.000 to 923.000",       10 },
+  { "SET Clock",     "Local date and time:",         "YYYY-MM-DD HH:MM",         16 },
+};
+static int edit_field;
+static Screen edit_back;
+static int edit_back_sel;
+static char new_channel[32];   // name typed in F_CH_NAME, waiting for its key
+
+static void startEdit(int field, const char* initial, Screen back) {
+  StrHelper::strncpy(input, initial, sizeof(input));
+  edit_field = field;
+  edit_back = back;
+  edit_back_sel = sel;
+  go(S_EDIT);
+}
+
+static void endEdit() {
+  go(edit_back);
+  sel = edit_back_sel;   // back on the same row
+}
+
+static int hexDecode(uint8_t* dest, const char* src, int max) {
+  int n = strlen(src) / 2;
+  if (n > max || (int)strlen(src) != n * 2) return 0;
+  for (int i = 0; i < n; i++) {
+    char b[3] = { src[i * 2], src[i * 2 + 1], 0 };
+    if (!isxdigit(b[0]) || !isxdigit(b[1])) return 0;
+    dest[i] = strtoul(b, NULL, 16);
+  }
+  return n;
+}
+
+static void joinChannel(const char* name, const uint8_t* secret, int len) {
+  int idx = the_mesh.joinChannel(name, secret, len);
+  if (idx < 0) { toast("Channel list full (8)"); go(S_INBOX); return; }
+  toast("Joined channel");
+  openChannel(idx, S_INBOX);
+}
+
+static void keyEditEnter() {
+  switch (edit_field) {
+    case F_NAME:
+      if (!input[0]) return;
+      StrHelper::strncpy(prefs.name, input, sizeof(prefs.name));
+      if (!prefs.onboarded) { go(S_TZ); return; }
+      prefsSave();
+      break;
+
+    case F_CH_NAME:
+      if (strlen(input) < 2) return;
+      if (input[0] == '#') {   // hashtag channel: key = first 16 bytes of sha256("#name"), lowercase like the apps
+        for (char* p = input; *p; p++) *p = tolower(*p);
+        uint8_t secret[16];
+        mesh::Utils::sha256(secret, sizeof(secret), (const uint8_t*)input, strlen(input));
+        joinChannel(input, secret, sizeof(secret));
+      } else {
+        StrHelper::strncpy(new_channel, input, sizeof(new_channel));
+        startEdit(F_CH_KEY, "", S_INBOX);
+      }
+      return;
+
+    case F_CH_KEY: {
+      uint8_t secret[32];
+      int len = hexDecode(secret, input, sizeof(secret));
+      size_t blen = 0;
+      if (len == 0 && mbedtls_base64_decode(secret, sizeof(secret), &blen, (const uint8_t*)input, strlen(input)) == 0) len = blen;
+      if (len != 16 && len != 32) { toast("Key must be 16 or 32 bytes"); return; }
+      joinChannel(new_channel, secret, len);
+      return;
+    }
+
+    case F_FREQ: {
+      float f = atof(input);
+      if (f < 868.0f || f > 923.0f) { toast("Out of range 868-923"); return; }
+      prefs.freq = f;
+      prefs.region = REGION_CUSTOM;
+      prefsSave();
+      the_mesh.applyRadio();
+      toast("Radio retuned");
+      break;
+    }
+
+    case F_CLOCK: {
+      int y, mo, d, h, mi;
+      if (sscanf(input, "%d-%d-%d %d:%d", &y, &mo, &d, &h, &mi) != 5 || y < 2025 || y > 2100 ||
+          mo < 1 || mo > 12 || d < 1 || d > 31 || h < 0 || h > 23 || mi < 0 || mi > 59) {
+        toast("Format: YYYY-MM-DD HH:MM");
+        return;
+      }
+      struct tm t = {};
+      t.tm_year = y - 1900;
+      t.tm_mon = mo - 1;
+      t.tm_mday = d;
+      t.tm_hour = h;
+      t.tm_min = mi;
+      the_mesh.setClock(mktime(&t) - prefs.tz_hours * 3600, CLOCK_MANUAL);   // no TZ is set: mktime is UTC
+      toast("Clock set");
+      break;
+    }
+  }
+  endEdit();
+}
+
+static void drawEdit() {
+  const EditField& f = FIELDS[edit_field];
+  drawStatus(prefs.onboarded ? f.title : "SETUP 2/4");
+  drawRow(0, false, f.prompt);
+  drawInput(2, input);
+  drawRow(4, false, f.help, NULL, C_DIM);
+  drawHints("ENT ok   ` back");
+}
+
+static void keyEdit(const Key& k) {
+  editText(input, FIELDS[edit_field].max_len, k);
+  if (k.code == K_ENTER) keyEditEnter();
+  else if (k.code == K_BACK && !prefs.onboarded) go(S_REGION);
+  else if (k.code == K_BACK) endEdit();
 }
 
 // ================================================================ onboarding / region
@@ -76,37 +214,13 @@ static void keyRegion(const Key& k) {
       the_mesh.applyRadio();
       toast("Radio retuned");
       go(S_SETTINGS);
-      sel = top = 1;
+      sel = 1;
     } else {
-      StrHelper::strncpy(input, prefs.name, sizeof(prefs.name));
-      go(S_NAME);
+      startEdit(F_NAME, prefs.name, S_REGION);
     }
   } else if (k.code == K_BACK && from_settings) {
     go(S_SETTINGS);
-    sel = top = 1;
-  }
-}
-
-static void drawName() {
-  drawStatus(from_settings ? "SET Name" : "SETUP 2/4");
-  drawRow(0, false, "Your name on the mesh:");
-  drawInput(2, input);
-  drawRow(4, false, "Others see this name.", NULL, C_DIM);
-  drawHints("ENT ok   ` back");
-}
-
-static void keyName(const Key& k) {
-  editText(input, sizeof(prefs.name) - 1, k);
-  if (k.code == K_ENTER && input[0]) {
-    StrHelper::strncpy(prefs.name, input, sizeof(prefs.name));
-    if (from_settings) {
-      prefsSave();
-      go(S_SETTINGS);
-    } else {
-      go(S_TZ);
-    }
-  } else if (k.code == K_BACK) {
-    go(from_settings ? S_SETTINGS : S_REGION);
+    sel = 1;
   }
 }
 
@@ -117,7 +231,7 @@ static void drawTz() {
   snprintf(s, sizeof(s), "< UTC%+d >", prefs.tz_hours);
   drawRow(2, false, s);
   drawRow(4, false, "e.g. US Pacific -8, summer -7", NULL, C_DIM);
-  drawRow(5, false, "Clock sets from the mesh.", NULL, C_DIM);
+  drawRow(5, false, "Clock sets from GPS or mesh.", NULL, C_DIM);
   drawHints(", / change  ENT ok  ` back");
 }
 
@@ -127,8 +241,7 @@ static void keyTz(const Key& k) {
   } else if (k.code == K_ENTER) {
     go(S_CONFIRM);
   } else if (k.code == K_BACK) {
-    StrHelper::strncpy(input, prefs.name, sizeof(prefs.name));
-    go(S_NAME);
+    startEdit(F_NAME, prefs.name, S_REGION);
   }
 }
 
@@ -154,11 +267,7 @@ static void keyConfirm(const Key& k) {
     the_mesh.applyRadio();
     the_mesh.sendAdvert(true);
     toast("On air! Advert sent");
-    uint8_t conv[CONV_ID_LEN];
-    ChannelDetails pub;
-    the_mesh.getChannel(0, pub);
-    convOfChannel(conv, pub.channel);
-    openChat(conv, S_INBOX);
+    openChannel(0, S_INBOX);
   } else if (k.code == K_BACK) {
     go(S_TZ);
   }
@@ -215,15 +324,35 @@ static void drawInbox() {
     if (c.unread) snprintf(right, sizeof(right), "*%d", c.unread);
     else if (c.last_ts) fmtAge(right, c.last_ts);
     else right[0] = 0;
-    drawRow(r, top + r == sel, name, right);
+    if (armed && top + r == sel) drawRow(r, true, "X again to delete", NULL, C_RED);
+    else drawRow(r, top + r == sel, name, right);
   }
-  drawHints("ENT open  TAB next  1-5 tab");
+  drawHints("ENT open  A add chan  X del");
 }
 
 static void keyInbox(const Key& k) {
   buildConvs();
   listMove(sel, top, nconvs, k);
-  if (k.code == K_ENTER && nconvs) openChat(convs[sel].conv, S_INBOX);
+  bool x = k.code == K_CHAR && (k.ch == 'x' || k.ch == 'X');
+  if (!x) armed = false;
+
+  if (k.code == K_ENTER && nconvs) {
+    openChat(convs[sel].conv, S_INBOX);
+  } else if (k.code == K_CHAR && (k.ch == 'a' || k.ch == 'A')) {
+    startEdit(F_CH_NAME, "#", S_INBOX);
+  } else if (x && nconvs) {
+    const uint8_t* conv = convs[sel].conv;
+    int idx = conv[0] == CONV_CHANNEL ? the_mesh.channelByConv(conv) : -1;
+    if (idx == 0) {
+      toast("Public can't be removed");
+    } else if (!armed) {
+      armed = true;
+    } else {
+      armed = false;
+      if (idx > 0) the_mesh.leaveChannel(idx); else msgsDeleteConv(conv);
+      toast(idx > 0 ? "Left channel" : "Thread deleted");
+    }
+  }
 }
 
 // ================================================================ chat
@@ -272,7 +401,8 @@ static int buildChatLines(int need) {
       sender[l] = 0;
       if (p) body = p + 2;
     } else {
-      convName(sender, sizeof(sender), m->conv);
+      ContactInfo* c = the_mesh.contactByConv(m->conv);
+      snprintf(sender, sizeof(sender), "%s", c ? c->name : "?");
     }
 
     Line msg_lines[12];
@@ -337,22 +467,64 @@ static void keyChat(const Key& k) {
 
 // ================================================================ contacts / repeaters
 
-struct ContactItem { uint16_t idx; uint32_t lastmod; };
-static ContactItem citems[MAX_CONTACTS];
+// A list item is a stored contact, an advert heard but not added ("+"), or a discovery reply.
+#define IT_HEARD  0x8000
+#define IT_DISC   0x4000
+struct ContactItem { uint16_t idx; uint32_t key; };   // sorted by key, highest first
+static ContactItem citems[MAX_CONTACTS + MAX_DISCOVERED + MAX_HEARD];
 static int ncitems;
 
-static void buildContacts(bool repeaters) {
+static bool matchesFilter(const char* name) {
+  int fl = strlen(filter);
+  if (fl == 0) return true;
+  for (const char* p = name; *p; p++) if (strncasecmp(p, filter, fl) == 0) return true;
+  return false;
+}
+
+static void sortItems() {
+  qsort(citems, ncitems, sizeof(ContactItem), [](const void* a, const void* b) {
+    uint32_t ka = ((const ContactItem*)a)->key, kb = ((const ContactItem*)b)->key;
+    return ka == kb ? 0 : (ka < kb ? 1 : -1);
+  });
+}
+
+static void addHeardItems(bool repeaters) {
+  for (int i = 0; i < the_mesh.num_heard; i++) {
+    const ContactInfo& h = the_mesh.heard[i];
+    if ((h.type == ADV_TYPE_REPEATER) != repeaters || !matchesFilter(h.name)) continue;
+    citems[ncitems++] = { (uint16_t)(IT_HEARD | i), h.lastmod >> 1 };
+  }
+}
+
+// contacts: favourites first, then by last heard
+static void buildContacts() {
   ncitems = 0;
   ContactInfo c;
-  for (int i = 0; i < the_mesh.getTotalContactSlots() && ncitems < MAX_CONTACTS; i++) {
-    if (!the_mesh.getContactByIdx(i, c) || c.type == ADV_TYPE_NONE) continue;
-    if ((c.type == ADV_TYPE_REPEATER) != repeaters) continue;
-    citems[ncitems++] = { (uint16_t)i, c.lastmod };
+  for (int i = 0; i < the_mesh.getTotalContactSlots(); i++) {
+    if (!the_mesh.getContactByIdx(i, c) || c.type == ADV_TYPE_NONE || c.type == ADV_TYPE_REPEATER) continue;
+    if (matchesFilter(c.name)) citems[ncitems++] = { (uint16_t)i, (c.isFav() ? 0x80000000 : 0) | (c.lastmod >> 1) };
   }
-  qsort(citems, ncitems, sizeof(ContactItem), [](const void* a, const void* b) {
-    uint32_t ta = ((const ContactItem*)a)->lastmod, tb = ((const ContactItem*)b)->lastmod;
-    return ta == tb ? 0 : (ta < tb ? 1 : -1);
-  });
+  addHeardItems(false);
+  sortItems();
+}
+
+// repeaters: discovery replies first (strongest first), then the rest by last heard
+static void buildRepeaters() {
+  ncitems = 0;
+  for (int i = 0; i < the_mesh.num_discovered; i++) {
+    citems[ncitems++] = { (uint16_t)(IT_DISC | i), 0x80000000 | (uint32_t)(the_mesh.discovered[i].snr_in4 + 128) };
+  }
+  ContactInfo c;
+  for (int i = 0; i < the_mesh.getTotalContactSlots(); i++) {
+    if (!the_mesh.getContactByIdx(i, c) || c.type != ADV_TYPE_REPEATER) continue;
+    bool replied = false;
+    for (int d = 0; d < the_mesh.num_discovered; d++) {
+      replied |= memcmp(the_mesh.discovered[d].pub_key, c.id.pub_key, PUB_KEY_SIZE) == 0;
+    }
+    if (!replied) citems[ncitems++] = { (uint16_t)i, c.lastmod >> 1 };
+  }
+  addHeardItems(true);
+  sortItems();
 }
 
 static void fmtHops(char* dest, const ContactInfo& c) {
@@ -361,39 +533,107 @@ static void fmtHops(char* dest, const ContactInfo& c) {
   else sprintf(dest, "%d", c.out_path_len & 63);
 }
 
-static void drawContacts(bool repeaters) {
-  buildContacts(repeaters);
-  listMove(sel, top, ncitems, Key{K_NONE});
-  drawStatus(repeaters ? "3 RPT" : "2 CON");
-  ContactInfo c;
-  for (int r = 0; r < BODY_ROWS && top + r < ncitems; r++) {
-    the_mesh.getContactByIdx(citems[top + r].idx, c);
-    char left[36], right[12], hops[4], age[8];
-    const char* tag = c.type == ADV_TYPE_ROOM ? "[R]" : c.type == ADV_TYPE_SENSOR ? "[S]" : "";
-    snprintf(left, sizeof(left), "%s%s", tag, c.name);
+static void drawContactRow(int r, const ContactItem& it) {
+  char left[36], right[16], hops[4], age[8];
+  uint16_t color = C_AMBER;
+  if (it.idx & IT_DISC) {
+    const Discovered& d = the_mesh.discovered[it.idx & 0xFF];
+    ContactInfo* c = the_mesh.lookupContactByPubKey(d.pub_key, PUB_KEY_SIZE);
+    if (c) {
+      snprintf(left, sizeof(left), "%s", c->name);
+    } else {
+      left[0] = '+';
+      mesh::Utils::toHex(&left[1], d.pub_key, 4);
+      color = C_DIM;
+    }
+    snprintf(right, sizeof(right), "%+d/%+d", d.snr_in4 / 4, d.snr_out4 / 4);   // SNR dB heard by us / by them
+  } else {
+    ContactInfo c;
+    if (it.idx & IT_HEARD) {
+      c = the_mesh.heard[it.idx & 0xFF];
+      color = C_DIM;
+    } else {
+      the_mesh.getContactByIdx(it.idx, c);
+    }
+    const char* tag = it.idx & IT_HEARD ? "+" : c.isFav() ? "*" : "";
+    const char* type = c.type == ADV_TYPE_ROOM ? "[R]" : c.type == ADV_TYPE_SENSOR ? "[S]" : "";
+    snprintf(left, sizeof(left), "%s%s%s", tag, type, c.name);
     fmtHops(hops, c);
     fmtAge(age, c.lastmod);
     snprintf(right, sizeof(right), "%s %4s", hops, age);
-    drawRow(r, top + r == sel, left, right);
   }
-  if (ncitems == 0) {
-    drawRow(1, false, repeaters ? "No repeaters heard yet." : "No contacts yet.", NULL, C_DIM);
+  drawRow(r, top + r == sel, left, right, color);
+}
+
+static void drawContacts(bool repeaters) {
+  if (repeaters) buildRepeaters(); else buildContacts();
+  listMove(sel, top, ncitems, Key{K_NONE});
+  char title[24];
+  if (repeaters || !filter[0]) strcpy(title, repeaters ? "3 RPT" : "2 CON");
+  else snprintf(title, sizeof(title), "CON /%s", filter);
+  drawStatus(title);
+  for (int r = 0; r < BODY_ROWS && top + r < ncitems; r++) drawContactRow(r, citems[top + r]);
+
+  if (ncitems == 0 && filter[0] && !repeaters) {
+    drawRow(1, false, "No match.  ` clears filter", NULL, C_DIM);
+  } else if (ncitems == 0 && repeaters) {
+    drawRow(1, false, "No repeaters heard yet.", NULL, C_DIM);
+    drawRow(2, false, "D: ask nearby repeaters", NULL, C_DIM);
+    drawRow(3, false, "to reply (60 s).", NULL, C_DIM);
+  } else if (ncitems == 0) {
+    drawRow(1, false, "No contacts yet.", NULL, C_DIM);
     drawRow(2, false, "They appear when their", NULL, C_DIM);
     drawRow(3, false, "adverts are received.", NULL, C_DIM);
   }
-  drawHints("ENT info  hops: D=direct");
+  char hint[COLS + 1];
+  if (repeaters && the_mesh.discovering()) snprintf(hint, sizeof(hint), "Listening %2ds  SNR in/out", the_mesh.discoverSecsLeft());
+  else if (repeaters) strcpy(hint, "ENT info  D discover  +=new");
+  else strcpy(hint, filter[0] ? "ENT info  ` clear filter" : "ENT info  type to filter");
+  drawHints(hint);
 }
 
 static void keyContacts(const Key& k, bool repeaters) {
-  buildContacts(repeaters);
+  if (repeaters) buildRepeaters(); else buildContacts();
   listMove(sel, top, ncitems, k);
-  if (k.code == K_ENTER && ncitems) {
-    ContactInfo c;
-    the_mesh.getContactByIdx(citems[sel].idx, c);
-    convOfContact(cur_conv, c);
-    contact_back = screen;
-    screen = S_CONTACT;
+
+  if (!repeaters) {   // type-to-filter
+    int fl = strlen(filter);
+    if (k.code == K_CHAR && isalpha(k.ch) && fl < (int)sizeof(filter) - 1) {
+      filter[fl] = k.ch;
+      filter[fl + 1] = 0;
+      sel = top = 0;
+    } else if (k.code == K_DEL && fl) {
+      filter[fl - 1] = 0;
+    } else if (k.code == K_BACK) {
+      filter[0] = 0;
+    }
+  } else if (k.code == K_CHAR && (k.ch == 'd' || k.ch == 'D')) {
+    the_mesh.startDiscovery();
+    toast("Asking nearby repeaters");
   }
+  if (k.code != K_ENTER || !ncitems) return;
+
+  // Enter: open details; "+" items are added to contacts first
+  uint16_t idx = citems[sel].idx;
+  uint8_t key[PUB_KEY_SIZE];
+  bool added = true;
+  if (idx & IT_HEARD) {
+    memcpy(key, the_mesh.heard[idx & 0xFF].id.pub_key, PUB_KEY_SIZE);
+    added = the_mesh.addHeard(idx & 0xFF);
+  } else if (idx & IT_DISC) {
+    memcpy(key, the_mesh.discovered[idx & 0xFF].pub_key, PUB_KEY_SIZE);
+    if (!the_mesh.lookupContactByPubKey(key, PUB_KEY_SIZE)) added = the_mesh.addDiscovered(idx & 0xFF);
+  } else {
+    ContactInfo c;
+    the_mesh.getContactByIdx(idx, c);
+    memcpy(key, c.id.pub_key, PUB_KEY_SIZE);
+  }
+  if (!added) { toast("Contacts full"); return; }
+  ContactInfo* c = the_mesh.lookupContactByPubKey(key, PUB_KEY_SIZE);
+  if (!c) return;
+  convOfContact(cur_conv, *c);
+  contact_back = screen;
+  go(S_CONTACT);
 }
 
 static void drawContact() {
@@ -403,7 +643,8 @@ static void drawContact() {
   char s[COLS + 1], hex[17];
   drawStatus(c->name);
   drawRow(0, false, "Name", c->name);
-  drawRow(1, false, "Type", TYPES[c->type <= ADV_TYPE_SENSOR ? c->type : 0]);
+  snprintf(s, sizeof(s), "%s%s", TYPES[c->type <= ADV_TYPE_SENSOR ? c->type : 0], c->isFav() ? " *fav" : "");
+  drawRow(1, false, "Type", s);
   mesh::Utils::toHex(hex, c->id.pub_key, 8);
   drawRow(2, false, "ID", hex);
   if (c->out_path_len == OUT_PATH_UNKNOWN) strcpy(s, "flood (unknown)");
@@ -412,19 +653,38 @@ static void drawContact() {
   drawRow(3, false, "Path", s);
   fmtAge(s, c->lastmod);
   drawRow(4, false, "Heard", s);
-  if (c->gps_lat || c->gps_lon) {
+  if (armed) {
+    drawRow(5, true, "X again to delete", NULL, C_RED);
+  } else if (c->gps_lat || c->gps_lon) {
     snprintf(s, sizeof(s), "%.4f,%.4f", c->gps_lat / 1e6, c->gps_lon / 1e6);
     drawRow(5, false, "GPS", s);
   }
-  drawHints(c->type == ADV_TYPE_CHAT ? "ENT message   ` back" : "` back");
+  drawHints(c->type == ADV_TYPE_CHAT ? "ENT msg F fav R rst S shr Xdel" : "F fav  R reset  S share  X del");
 }
 
 static void keyContact(const Key& k) {
   ContactInfo* c = the_mesh.contactByConv(cur_conv);
-  if (k.code == K_BACK || !c) {
-    go(contact_back);
-  } else if (k.code == K_ENTER && c->type == ADV_TYPE_CHAT) {
+  if (k.code == K_BACK || !c) { go(contact_back); return; }
+  char ch = k.code == K_CHAR ? toupper(k.ch) : 0;
+  if (ch != 'X') armed = false;
+
+  if (k.code == K_ENTER && c->type == ADV_TYPE_CHAT) {
     openChat(cur_conv, S_CONTACT);
+  } else if (ch == 'F') {
+    c->flags ^= 1;
+    storeMarkContactsDirty();
+    toast(c->isFav() ? "Favourite" : "Not a favourite");
+  } else if (ch == 'R') {
+    the_mesh.resetPathTo(*c);
+    storeMarkContactsDirty();
+    toast("Path reset: next msg floods");
+  } else if (ch == 'S') {
+    toast(the_mesh.shareContactZeroHop(*c) ? "Shared (zero-hop advert)" : "No advert stored yet");
+  } else if (ch == 'X') {
+    if (!armed) { armed = true; return; }
+    the_mesh.deleteContact(*c);
+    toast("Contact deleted");
+    go(contact_back);
   }
 }
 
@@ -455,8 +715,9 @@ static void drawRadio() {
   snprintf(s, sizeof(s), "RSSI%4.0f SNR%5.1f NF%4d",
            radio_driver.getLastRSSI(), radio_driver.getLastSNR(), radio_driver.getNoiseFloor());
   drawRow(4, false, s);
-  snprintf(s, sizeof(s), "RX%-5u TX%-5u BAT %.2fV", (unsigned)radio_driver.getPacketsRecv(),
-           (unsigned)radio_driver.getPacketsSent(), board.getBattMilliVolts() / 1000.0f);
+  float air = the_mesh.getTotalAirTime() * 100.0f / max(1UL, millis());   // our TX share of time since boot
+  snprintf(s, sizeof(s), "RX%u TX%u AIR%.1f%% %.2fV", (unsigned)radio_driver.getPacketsRecv(),
+           (unsigned)radio_driver.getPacketsSent(), air, board.getBattMilliVolts() / 1000.0f);
   drawRow(5, false, s);
   drawHints("ENT advert  Z zero-hop adv");
 }
@@ -469,74 +730,122 @@ static void keyRadio(const Key& k) {
 
 // ================================================================ settings
 
-enum { SET_NAME, SET_REGION, SET_TX, SET_BRIGHT, SET_SCREEN, SET_BEEP, SET_TZ, SET_ID, SET_RESET, SET_COUNT };
+enum { SET_NAME, SET_REGION, SET_FREQ, SET_BW, SET_SF, SET_CR, SET_TX, SET_HASH, SET_AUTOADD, SET_OVERWRITE,
+       SET_BRIGHT, SET_SCREEN, SET_BEEP, SET_TZ, SET_CLOCK, SET_ID, SET_RESET, SET_COUNT };
+static const float BWS[] = { 7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500 };
+#define NUM_BWS (int)(sizeof(BWS) / sizeof(BWS[0]))
+struct AddMode { uint8_t mask; const char* label; };
+static const AddMode ADD_MODES[] = {
+  { ADD_CHAT_RPT, "chat+rpt" },
+  { 0x1E, "all" },
+  { 1 << ADV_TYPE_CHAT, "chat" },
+  { 0, "off" },
+};
+#define NUM_ADD_MODES (int)(sizeof(ADD_MODES) / sizeof(ADD_MODES[0]))
+
+static void fmtClock(char* dest, int sz) {   // local "YYYY-MM-DD HH:MM", the clock editor's format
+  time_t t = the_mesh.now() + prefs.tz_hours * 3600;
+  struct tm tm;
+  gmtime_r(&t, &tm);
+  strftime(dest, sz, "%Y-%m-%d %H:%M", &tm);
+}
+
+static int addModeIdx() {
+  for (int i = 0; i < NUM_ADD_MODES; i++) if (ADD_MODES[i].mask == prefs.auto_add) return i;
+  return 0;
+}
 
 static void drawSettings() {
+  listMove(sel, top, SET_COUNT, Key{K_NONE});
   drawStatus("5 SET");
   for (int r = 0; r < BODY_ROWS && top + r < SET_COUNT; r++) {
     int i = top + r;
     char v[24] = "";
     const char* label = "";
     switch (i) {
-      case SET_NAME:   label = "Name"; snprintf(v, sizeof(v), "%.16s", prefs.name); break;
-      case SET_REGION: label = "Region";
+      case SET_NAME:    label = "Name"; snprintf(v, sizeof(v), "%.16s", prefs.name); break;
+      case SET_REGION:  label = "Region";
         snprintf(v, sizeof(v), "%.18s", prefs.region < NUM_PRESETS ? PRESETS[prefs.region].title : "Custom"); break;
-      case SET_TX:     label = "TX power"; snprintf(v, sizeof(v), "< %d dBm >", prefs.tx_power); break;
-      case SET_BRIGHT: label = "Brightness"; snprintf(v, sizeof(v), "< %d/4 >", prefs.brightness + 1); break;
-      case SET_SCREEN: label = "Screen off";
+      case SET_FREQ:    label = "Frequency"; snprintf(v, sizeof(v), "%.3f", prefs.freq); break;
+      case SET_BW:      label = "Bandwidth"; snprintf(v, sizeof(v), "< %g >", prefs.bw); break;
+      case SET_SF:      label = "Spreading"; snprintf(v, sizeof(v), "< SF%d >", prefs.sf); break;
+      case SET_CR:      label = "Coding rate"; snprintf(v, sizeof(v), "< 4/%d >", prefs.cr); break;
+      case SET_TX:      label = "TX power"; snprintf(v, sizeof(v), "< %d dBm >", prefs.tx_power); break;
+      case SET_HASH:    label = "Path hash"; snprintf(v, sizeof(v), "< %d byte >", prefs.path_hash_size); break;
+      case SET_AUTOADD: label = "Auto-add"; snprintf(v, sizeof(v), "< %s >", ADD_MODES[addModeIdx()].label); break;
+      case SET_OVERWRITE: label = "Overwrite old"; strcpy(v, prefs.overwrite ? "< on >" : "< off >"); break;
+      case SET_BRIGHT:  label = "Brightness"; snprintf(v, sizeof(v), "< %d/4 >", prefs.brightness + 1); break;
+      case SET_SCREEN:  label = "Screen off";
         if (SCREEN_OFF_SECS[prefs.screen_off] == 0) strcpy(v, "< never >");
         else snprintf(v, sizeof(v), "< %ds >", SCREEN_OFF_SECS[prefs.screen_off]);
         break;
-      case SET_BEEP:   label = "Beep"; strcpy(v, prefs.beep ? "< on >" : "< off >"); break;
-      case SET_TZ:     label = "Time zone"; snprintf(v, sizeof(v), "< UTC%+d >", prefs.tz_hours); break;
-      case SET_ID:     label = "My ID"; mesh::Utils::toHex(v, the_mesh.selfPubKey(), 4); break;
-      case SET_RESET:  label = confirm_reset ? "ENT again to WIPE ALL" : "Factory reset"; break;
+      case SET_BEEP:    label = "Beep"; strcpy(v, prefs.beep ? "< on >" : "< off >"); break;
+      case SET_TZ:      label = "Time zone"; snprintf(v, sizeof(v), "< UTC%+d >", prefs.tz_hours); break;
+      case SET_CLOCK: {
+        static const char* SRC[] = { "Clock", "Clock (mesh)", "Clock (set)", "Clock (gps)" };
+        label = SRC[the_mesh.clockSource()];
+        if (the_mesh.clockSynced()) fmtClock(v, sizeof(v)); else strcpy(v, "not set");
+        break;
+      }
+      case SET_ID:      label = "My ID"; mesh::Utils::toHex(v, the_mesh.selfPubKey(), 4); break;
+      case SET_RESET:   label = armed ? "ENT again to WIPE ALL" : "Factory reset"; break;
     }
-    drawRow(r, i == sel, label, v, i == SET_RESET && confirm_reset ? C_RED : C_AMBER);
+    drawRow(r, i == sel, label, v, i == SET_RESET && armed ? C_RED : C_AMBER);
   }
   drawHints("ENT edit   , / change");
 }
 
 static void keySettings(const Key& k) {
   listMove(sel, top, SET_COUNT, k);
-  if (k.code != K_UP && k.code != K_DOWN && sel != SET_RESET) confirm_reset = false;
+  if (k.code != K_UP && k.code != K_DOWN && sel != SET_RESET) armed = false;
   int d = k.code == K_RIGHT || k.code == K_ENTER ? 1 : k.code == K_LEFT ? -1 : 0;
 
-  switch (sel) {
-    case SET_NAME:
-      if (k.code == K_ENTER) {
-        StrHelper::strncpy(input, prefs.name, sizeof(prefs.name));
-        from_settings = true;
-        go(S_NAME);
-      }
-      return;
-    case SET_REGION:
-      if (k.code == K_ENTER) {
+  if (k.code == K_ENTER) {
+    char s[24];
+    switch (sel) {
+      case SET_NAME: startEdit(F_NAME, prefs.name, S_SETTINGS); return;
+      case SET_FREQ:
+        snprintf(s, sizeof(s), "%.3f", prefs.freq);
+        startEdit(F_FREQ, s, S_SETTINGS);
+        return;
+      case SET_CLOCK:
+        if (the_mesh.clockSynced()) fmtClock(s, sizeof(s)); else strcpy(s, "2026-");
+        startEdit(F_CLOCK, s, S_SETTINGS);
+        return;
+      case SET_REGION:
         from_settings = true;
         go(S_REGION);
         sel = prefs.region < NUM_PRESETS ? prefs.region : 0;
         listMove(sel, top, NUM_PRESETS, Key{K_NONE});
-      }
-      return;
-    case SET_RESET:
-      if (k.code == K_ENTER) {
-        if (confirm_reset) storeWipe();
-        confirm_reset = true;
-      }
-      return;
+        return;
+      case SET_RESET:
+        if (armed) storeWipe();
+        armed = true;
+        return;
+    }
   }
   if (d == 0) return;
   switch (sel) {
-    case SET_TX:
-      prefs.tx_power = constrain(prefs.tx_power + d, 2, MAX_LORA_TX_POWER);
-      radio_driver.setTxPower(prefs.tx_power);
+    case SET_BW: {
+      int i = 0;
+      while (i < NUM_BWS - 1 && BWS[i] < prefs.bw - 0.01f) i++;
+      prefs.bw = BWS[constrain(i + d, 0, NUM_BWS - 1)];
       break;
+    }
+    case SET_SF:     prefs.sf = constrain(prefs.sf + d, 5, 12); break;
+    case SET_CR:     prefs.cr = constrain(prefs.cr + d, 5, 8); break;
+    case SET_TX:     prefs.tx_power = constrain(prefs.tx_power + d, 2, MAX_LORA_TX_POWER); break;
+    case SET_HASH:   prefs.path_hash_size = constrain(prefs.path_hash_size + d, 1, 3); break;
+    case SET_AUTOADD: prefs.auto_add = ADD_MODES[(addModeIdx() + NUM_ADD_MODES + d) % NUM_ADD_MODES].mask; break;
+    case SET_OVERWRITE: prefs.overwrite = !prefs.overwrite; break;
     case SET_BRIGHT: prefs.brightness = (prefs.brightness + 4 + d) % 4; applyBrightness(); break;
     case SET_SCREEN: prefs.screen_off = (prefs.screen_off + 6 + d) % 6; break;
     case SET_BEEP:   prefs.beep = !prefs.beep; break;
     case SET_TZ:     prefs.tz_hours = constrain(prefs.tz_hours + d, -12, 14); break;
     default: return;
   }
+  if (sel == SET_BW || sel == SET_SF || sel == SET_CR) prefs.region = REGION_CUSTOM;
+  if (sel >= SET_BW && sel <= SET_TX) the_mesh.applyRadio();
   prefsSave();
 }
 
@@ -545,7 +854,7 @@ static void keySettings(const Key& k) {
 void screenDraw() {
   switch (screen) {
     case S_REGION:    drawRegion(); break;
-    case S_NAME:      drawName(); break;
+    case S_EDIT:      drawEdit(); break;
     case S_TZ:        drawTz(); break;
     case S_CONFIRM:   drawConfirm(); break;
     case S_INBOX:     drawInbox(); break;
@@ -559,11 +868,10 @@ void screenDraw() {
 }
 
 void screenKey(const Key& k) {
-  bool onboarding = !prefs.onboarded;
-  bool typing = screen == S_CHAT || screen == S_NAME;
+  bool typing = screen == S_CHAT || screen == S_EDIT;
 
-  // tab switching: Tab cycles, digits jump (Fn+digit while typing)
-  if (!onboarding && !(screen == S_NAME && from_settings)) {
+  // tab switching: Tab cycles, digits jump (Fn+digit in a chat). Not while onboarding or editing a field.
+  if (prefs.onboarded && screen != S_EDIT) {
     int cur = -1;
     for (int i = 0; i < 5; i++) if (TABS[i] == screen) cur = i;
     if (k.code == K_TAB) {
@@ -583,7 +891,7 @@ void screenKey(const Key& k) {
 
   switch (screen) {
     case S_REGION:    keyRegion(k); break;
-    case S_NAME:      keyName(k); break;
+    case S_EDIT:      keyEdit(k); break;
     case S_TZ:        keyTz(k); break;
     case S_CONFIRM:   keyConfirm(k); break;
     case S_INBOX:     keyInbox(k); break;
@@ -594,5 +902,5 @@ void screenKey(const Key& k) {
     case S_RADIO:     keyRadio(k); break;
     case S_SETTINGS:  keySettings(k); break;
   }
-  if (screen != S_NAME && screen != S_REGION) from_settings = false;
+  if (screen != S_REGION) from_settings = false;
 }

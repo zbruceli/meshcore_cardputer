@@ -8,8 +8,8 @@ Prefs prefs;
 uint32_t msg_seq = 0;
 uint32_t msg_added = 0;
 
-static Msg msgs[MSG_LOG_SIZE];
-static int msg_head = 0, msg_count = 0;
+static Msg msgs[MSG_LOG_SIZE];   // oldest first
+static int msg_count = 0;
 static uint32_t msgs_save_at = 0, contacts_save_at = 0;
 
 static bool readFile(const char* path, void* dest, size_t len) {
@@ -42,12 +42,17 @@ void prefsDefaults() {
   prefs.brightness = 2;
   prefs.screen_off = 1;
   prefs.beep = 1;
+  prefs.auto_add = ADD_CHAT_RPT;
+  prefs.overwrite = 1;
 }
 
 void prefsLoad() {
-  if (!readFile("/prefs", &prefs, sizeof(prefs)) || prefs.version != PREFS_VERSION) {
-    prefsDefaults();
-  }
+  prefsDefaults();
+  File f = SPIFFS.open("/prefs", "r");
+  if (!f) return;
+  f.read((uint8_t*)&prefs, sizeof(prefs));   // a shorter (older) file leaves the newer fields at their defaults
+  f.close();
+  if (prefs.version != PREFS_VERSION) prefsDefaults();
 }
 
 void prefsSave() { writeFile("/prefs", &prefs, sizeof(prefs)); }
@@ -107,21 +112,51 @@ void contactsSave(BaseChatMesh& mesh) {
   f.close();
 }
 
+// ---- channels ----
+
+void channelsLoad(BaseChatMesh& mesh) {
+  ChannelDetails chs[MAX_GROUP_CHANNELS];
+  if (!readFile("/channels", chs, sizeof(chs))) {
+    mesh.addChannel("Public", PUBLIC_GROUP_PSK);
+    channelsSave(mesh);
+    return;
+  }
+  for (int i = 0; i < MAX_GROUP_CHANNELS; i++) mesh.setChannel(i, chs[i]);
+}
+
+void channelsSave(BaseChatMesh& mesh) {
+  ChannelDetails chs[MAX_GROUP_CHANNELS];
+  for (int i = 0; i < MAX_GROUP_CHANNELS; i++) mesh.getChannel(i, chs[i]);
+  writeFile("/channels", chs, sizeof(chs));
+}
+
 void storeMarkContactsDirty() { contacts_save_at = millis() + LAZY_SAVE_MILLIS; }
 
 // ---- message log ----
 
 int msgCount() { return msg_count; }
 
-Msg* msgAt(int i) {
-  return &msgs[(msg_head - msg_count + i + MSG_LOG_SIZE) % MSG_LOG_SIZE];
+Msg* msgAt(int i) { return &msgs[i]; }
+
+static void msgRemove(int i) {
+  memmove(&msgs[i], &msgs[i + 1], (msg_count - i - 1) * sizeof(Msg));
+  msg_count--;
 }
 
 Msg* msgAdd() {
-  Msg* m = &msgs[msg_head];
+  if (msg_count == MSG_LOG_SIZE) {
+    // evict the oldest message of the conversation with the most messages,
+    // so a busy Public channel can't push out a quiet DM thread
+    int victim = 0, most = 0;
+    for (int i = 0; i < msg_count; i++) {
+      int n = 0;
+      for (int j = i; j < msg_count; j++) n += memcmp(msgs[j].conv, msgs[i].conv, CONV_ID_LEN) == 0;
+      if (n > most) { most = n; victim = i; }
+    }
+    msgRemove(victim);
+  }
+  Msg* m = &msgs[msg_count++];
   memset(m, 0, sizeof(*m));
-  msg_head = (msg_head + 1) % MSG_LOG_SIZE;
-  if (msg_count < MSG_LOG_SIZE) msg_count++;
   msg_seq++;
   msg_added++;
   msgsChanged();
@@ -129,6 +164,14 @@ Msg* msgAdd() {
 }
 
 void msgsChanged() { msgs_save_at = millis() + LAZY_SAVE_MILLIS; }
+
+void msgsDeleteConv(const uint8_t conv[]) {
+  for (int i = msg_count - 1; i >= 0; i--) {
+    if (memcmp(msgs[i].conv, conv, CONV_ID_LEN) == 0) msgRemove(i);
+  }
+  msg_seq++;
+  msgsChanged();
+}
 
 void msgsLoad() {
   File f = SPIFFS.open("/msgs", "r");
@@ -138,7 +181,6 @@ void msgsLoad() {
     if (m.status == ST_SENDING) m.status = ST_FAILED;   // retries don't survive a reboot
   }
   f.close();
-  msg_head = msg_count % MSG_LOG_SIZE;
 }
 
 static void msgsSave() {

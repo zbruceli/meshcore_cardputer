@@ -50,6 +50,57 @@ bool radio_init() {
   return radio.std_init(&spi);
 }
 
+// ---- GPS: parse NMEA RMC for date + time only ----
+
+void gpsBegin() {
+  Serial1.setRxBufferSize(1024);   // 115200 baud and loop() may be busy drawing for a few ms
+  Serial1.begin(115200, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
+}
+
+static bool nmeaChecksumOk(const char* s) {
+  const char* star = strchr(s, '*');
+  if (s[0] != '$' || !star) return false;
+  uint8_t sum = 0;
+  for (const char* p = s + 1; p < star; p++) sum ^= *p;
+  return sum == strtoul(star + 1, NULL, 16);
+}
+
+// "$GNRMC,hhmmss.ss,A,lat,N,lon,E,speed,course,ddmmyy,..." -> UTC epoch, 0 unless status is A (valid fix)
+static uint32_t parseRmc(const char* s) {
+  if (strncmp(s + 3, "RMC,", 4) != 0 || !nmeaChecksumOk(s)) return 0;
+  const char* f[10];
+  int n = 0;
+  for (const char* p = s; *p && n < 10; p++) if (*p == ',') f[n++] = p + 1;
+  if (n < 10 || f[1][0] != 'A') return 0;
+  int hh, mi, ss, dd, mo, yy;
+  if (sscanf(f[0], "%2d%2d%2d", &hh, &mi, &ss) != 3 || sscanf(f[8], "%2d%2d%2d", &dd, &mo, &yy) != 3) return 0;
+  struct tm t = {};
+  t.tm_year = yy + 100;   // years since 1900
+  t.tm_mon = mo - 1;
+  t.tm_mday = dd;
+  t.tm_hour = hh;
+  t.tm_min = mi;
+  t.tm_sec = ss;
+  return mktime(&t);      // no TZ is set, so this is UTC
+}
+
+uint32_t gpsReadTime() {
+  static char line[96];
+  static int len = 0;
+  uint32_t found = 0;
+  while (Serial1.available()) {
+    char c = Serial1.read();
+    if (c == '\n' || c == '\r') {
+      line[len] = 0;
+      if (len > 0) { uint32_t t = parseRmc(line); if (t) found = t; }
+      len = 0;
+    } else if (len < (int)sizeof(line) - 1) {
+      line[len++] = c;
+    }
+  }
+  return found;
+}
+
 mesh::LocalIdentity radio_new_identity() {
   RadioNoiseListener rng(radio);
   return mesh::LocalIdentity(&rng);

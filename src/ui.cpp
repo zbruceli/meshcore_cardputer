@@ -17,11 +17,12 @@ static uint8_t batt_pct = 0;
 
 // ---------------------------------------------------------------- primitives
 
+// Status bar: title (12 chars) | unread | signal | battery | clock, with thin dividers between the right-hand groups.
 void drawStatus(const char* title) {
   canvas.fillRect(0, 0, SCR_W, ROW_H, C_AMBER);
   canvas.setTextColor(C_BG);
-  char t[16];
-  toAscii(t, title, 15);
+  char t[13];
+  toAscii(t, title, 12);
   canvas.drawString(t, 2, 0);
 
   int unread = 0;
@@ -29,7 +30,7 @@ void drawStatus(const char* title) {
   if (unread) {
     char u[6];
     snprintf(u, sizeof(u), "*%d", unread > 99 ? 99 : unread);
-    canvas.drawString(u, 124, 0);
+    canvas.drawString(u, 100, 0);
   }
 
   // RSSI of the last packet heard, as 4 bars
@@ -40,17 +41,20 @@ void drawStatus(const char* title) {
   }
   for (int b = 0; b < 4; b++) {
     int h = 3 + b * 3;
-    if (b < bars) canvas.fillRect(150 + b * 4, 14 - h, 3, h, C_BG);
-    else canvas.fillRect(150 + b * 4, 13, 3, 1, C_BG);
+    if (b < bars) canvas.fillRect(129 + b * 4, 14 - h, 3, h, C_BG);
+    else canvas.fillRect(129 + b * 4, 13, 3, 1, C_BG);
   }
+  canvas.drawFastVLine(149, 3, 10, C_BG);
 
   char s[12];
   snprintf(s, sizeof(s), "%3d%%", batt_pct);
   canvas.setTextColor(batt_pct <= 10 ? C_RED : C_BG);
-  canvas.drawString(s, 166, 0);
+  canvas.drawString(s, 154, 0);
+  canvas.drawFastVLine(192, 3, 10, C_BG);
+
   canvas.setTextColor(C_BG);
   if (the_mesh.clockSynced()) fmtTime(s, the_mesh.now()); else strcpy(s, "--:--");
-  canvas.drawString(s, 200, 0);
+  canvas.drawString(s, 197, 0);
 }
 
 void drawHints(const char* hints) {

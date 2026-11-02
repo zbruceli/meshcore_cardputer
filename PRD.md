@@ -73,7 +73,9 @@ Priority: **M** = MVP, **P1** = Phase 1, **P2** = Phase 2. Detailed sequencing l
 - Auto-add from received adverts (MeshCore `BaseChatMesh` behaviour). Type icon: chat / repeater / room / sensor.
 - List sorted by last heard; shows name, type, hops ("direct" or N hops), last-heard age.
 - Actions: Message, Details (pubkey prefix, path, last SNR, GPS if any), **P1**: Favourite, Delete, Reset path,
-  Share (zero-hop advert of contact), toggle auto-add.
+  Share (zero-hop advert of contact).
+- **P1** auto-add by node type, default chat + repeaters ("Auto Add Selected" per MeshCore guidance, so repeater
+  names show up), plus "overwrite oldest" when full (favourites are kept). Adverts not added stay listed to add by hand.
 - Search: typing letters in the list filters by name prefix.
 - Max contacts: 100 (RAM bound; ~150 B each).
 
@@ -90,8 +92,8 @@ Priority: **M** = MVP, **P1** = Phase 1, **P2** = Phase 2. Detailed sequencing l
 
 ### 5.6 Configuration (M basic, P1 full)
 - **M**: name, region preset, TX power, screen brightness, screen timeout, beep on/off, factory reset.
-- **P1**: manual radio (freq/BW/SF/CR), auto-add contacts on/off, path hash size (default 1 byte per FAQ guidance),
-  advert location sharing, time zone offset, set clock manually.
+- **P1**: manual radio (freq/BW/SF/CR), auto-add contact types, overwrite oldest, path hash size (default 1 byte
+  per FAQ guidance), time zone offset, set clock manually. (Advert location sharing moved to P2 with GPS.)
 - **P2**: power profile (see 5.8), GPS on/off + interval.
 - All settings persisted with MeshCore `NodePrefs`-compatible fields where they overlap.
 

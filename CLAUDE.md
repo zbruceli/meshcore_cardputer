@@ -37,6 +37,7 @@ src/ui_screens.cpp   per-screen draw()/key()
 
 - LoRa SX1262: NSS 5, DIO1 4, RST 3, BUSY 6, SCK 40, MOSI 14, MISO 39; DIO2 as RF switch; TCXO (3.3 V per prior port — verify).
 - Cap I/O expander PI4IOE5V6408 @ 0x43, I2C SDA 8 / SCL 9. Board I2C SDA 2 / SCL 1.
+- Cap GPS ATGM336H-6N on UART1: ESP RX G15, TX G13, 115200 8N1. No power-enable pin found. Used for the clock only.
 - Battery ADC G10 (×2 divider). G0 = user button (send advert).
 - Display 240×135. Band 868–923 MHz only.
 - Prior working port to crib pin/init code from: https://github.com/Stachugit/MeshCore-Cardputer-ADV
