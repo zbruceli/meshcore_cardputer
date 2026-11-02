@@ -53,12 +53,32 @@ static const char* PKT_TYPES[] = { "REQ", "RESP", "TXT", "ACK", "ADVERT", "GRP_T
                                    "PATH", "TRACE", "MULTI", "CTRL", "?", "?", "?", "RAW" };
 
 void ChatMesh::logRx(mesh::Packet* packet, int len, float score) {
+  if (packet->getPayloadType() == PAYLOAD_TYPE_GRP_TXT && echo_ts) {   // a repeater re-sending our channel msg?
+    uint8_t hash[MAX_HASH_SIZE];
+    packet->calculatePacketHash(hash);   // excludes the path, so it's the same at every hop
+    for (int i = msgCount() - 1; i >= 0 && memcmp(hash, echo_hash, MAX_HASH_SIZE) == 0; i--) {
+      Msg* m = msgAt(i);
+      if (m->out && m->sender_ts == echo_ts && memcmp(m->conv, echo_conv, CONV_ID_LEN) == 0) {
+        if (m->attempt < 99) m->attempt++;
+        msgsChanged();
+        msg_seq++;
+        break;
+      }
+    }
+  }
   if (!Serial) return;   // USB not connected: don't spend time printing
-  Serial.printf("RX %-8s %s hops %d len %d snr %.1f\n", PKT_TYPES[packet->getPayloadType() & 0x0F],
-                packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len, packet->getSNR());
+  Serial.printf("RX %-8s %s hops %d len %d snr %.1f ferr %.0fHz", PKT_TYPES[packet->getPayloadType() & 0x0F],
+                packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len, packet->getSNR(),
+                radio.getFrequencyError());
+  if (packet->hasTransportCodes()) Serial.printf(" scope %04x", packet->transport_codes[0]);   // region-scoped flood
+  Serial.println();
 }
 
 void ChatMesh::logTx(mesh::Packet* packet, int len) {
+  if (packet->getPayloadType() == PAYLOAD_TYPE_GRP_TXT && echo_wait_tx) {   // we never forward: this is ours
+    packet->calculatePacketHash(echo_hash);
+    echo_wait_tx = false;
+  }
   if (!Serial) return;
   Serial.printf("TX %-8s %s hops %d len %d\n", PKT_TYPES[packet->getPayloadType() & 0x0F],
                 packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len);
@@ -241,6 +261,11 @@ bool ChatMesh::sendChannel(int channel_idx, const char* text) {
   snprintf(m->text, sizeof(m->text), "%s: %s", prefs.name, text);
   bool ok = sendGroupMessage(m->sender_ts, ch.channel, prefs.name, text, strlen(text));
   m->status = ok ? ST_SENT : ST_FAILED;
+  if (ok) {   // its hash is taken when it's actually transmitted (logTx)
+    echo_ts = m->sender_ts;
+    memcpy(echo_conv, m->conv, CONV_ID_LEN);
+    echo_wait_tx = true;
+  }
   return ok;
 }
 

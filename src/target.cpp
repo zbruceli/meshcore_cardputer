@@ -18,9 +18,6 @@ void CardputerBoard::begin() {
 
   pinMode(PIN_SD_CS, OUTPUT);       // SD card shares the LoRa SPI bus: keep it deselected
   digitalWrite(PIN_SD_CS, HIGH);
-  pinMode(46, OUTPUT);              // Cap power enable, as in the prior Cardputer-ADV port (verify on hw)
-  digitalWrite(46, HIGH);
-  delay(50);
 
   auto cfg = M5.config();
   cfg.internal_imu = false;

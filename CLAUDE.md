@@ -40,7 +40,9 @@ src/ui_screens.cpp   per-screen draw()/key() + dispatch
 - Cap I/O expander PI4IOE5V6408 @ 0x43 on internal I2C (SDA 8 / SCL 9, owned by M5Unified): P0 high = RF path on.
   Arduino `Wire` is moved to the Grove port (SDA 2 / SCL 1).
 - Cap GPS ATGM336H-6N on UART1: ESP RX 15, TX 13, 115200 8N1. No power-enable pin found. Used for the clock only.
-- SD card shares the LoRa SPI bus (CS 12, kept high). G46 driven high at boot (from the prior port).
+- SD card shares the LoRa SPI bus (CS 12, kept high). Don't drive G46 (not a Cap power enable, per newer ports).
+- SX1262 PA current limit 240 mA, as in MeshCore's Cardputer-ADV builds. With 140 mA we heard the mesh but nothing
+  we sent was ever repeated; the limit is the suspected cause (unverified).
 - Battery ADC G10 (×2). G0 = user button (flood advert). Display 240×135. Keyboard TCA8418 (auto-detected).
 - Prior port to crib from: https://github.com/Stachugit/MeshCore-Cardputer-ADV (`variants/m5stack_cardputer/`).
 

@@ -411,7 +411,13 @@ static int buildChatLines(int need) {
     char hdr[48], t[8];
     fmtTime(t, m->ts);
     static const char* STATUS[] = { "", " [..]", "", " [ok]", " [x]" };
-    snprintf(hdr, sizeof(hdr), "%s %s%s", t, sender, STATUS[m->status]);
+    char st[16];
+    if (is_channel && m->out && m->status == ST_SENT) {   // no ACKs on channels: show repeaters heard re-sending it
+      if (m->attempt) snprintf(st, sizeof(st), " [heard %d]", m->attempt); else strcpy(st, " [sent]");
+    } else {
+      strcpy(st, STATUS[m->status]);
+    }
+    snprintf(hdr, sizeof(hdr), "%s %s%s", t, sender, st);
     int k = wrap(hdr, msg_lines, 1, m->status == ST_FAILED ? C_RED : C_DIM);
     k += wrap(body, &msg_lines[k], 11, C_AMBER);
     while (k > 0 && n < MAX_LINES) lines[n++] = msg_lines[--k];

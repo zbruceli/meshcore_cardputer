@@ -36,6 +36,10 @@ class ChatMesh : public BaseChatMesh {
   uint32_t disc_tag = 0, disc_until = 0;
   SentAck sent_acks[MAX_SENT_ACKS];
   int sent_ack_next = 0;
+  // our latest channel message: its packet hash, to count repeaters echoing it (like the apps' "heard N repeats")
+  uint8_t echo_hash[MAX_HASH_SIZE], echo_conv[CONV_ID_LEN];
+  uint32_t echo_ts = 0;
+  bool echo_wait_tx = false;
   int32_t clock_votes[4];   // (heard timestamp - uptime secs) of recent adverts/messages
   uint8_t vote_src[4];      // who sent each one (pubkey byte / sender name hash)
   int num_votes = 0;

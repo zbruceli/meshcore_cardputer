@@ -17,6 +17,7 @@ public:
 };
 
 extern CardputerBoard board;
+extern CustomSX1262 radio;
 extern CustomSX1262Wrapper radio_driver;
 extern AutoDiscoverRTCClock rtc_clock;
 extern SensorManager sensors;

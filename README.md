@@ -93,6 +93,9 @@ Status bar: screen title, unread count, signal of the last packet, battery %, cl
 Tips:
 - Others only see you as a contact after they hear your advert: press G0 once after setup.
 - A DM shows `[..]` while sending, `[ok]` when acknowledged, `[x]` if it failed.
+- Channel messages have no acknowledgement: yours show `[sent]`, then `[heard N]` once repeaters are heard
+  re-broadcasting it (like the apps' "heard N repeats"). `[heard 0]` for a long time means it may not have left
+  your area.
 - Time zone is a fixed UTC offset: change it in SET when daylight saving starts or ends.
 
 ## Project docs

@@ -52,7 +52,7 @@ struct Msg {
   uint8_t  conv[CONV_ID_LEN];
   uint8_t  out;         // 1 = sent by us
   uint8_t  status;      // ST_*
-  uint8_t  attempt;
+  uint8_t  attempt;      // outgoing DM: retry number. Outgoing channel msg: repeaters heard re-sending it
   uint8_t  unread;
   char     text[MAX_TEXT_LEN + 1];   // channel msgs keep MeshCore's "sender: text" form
 };
