@@ -20,6 +20,9 @@ enum { CLOCK_NONE, CLOCK_MESH, CLOCK_MANUAL, CLOCK_GPS };
 #define MAX_SENT_ACKS     16   // expected ACKs of recent DM attempts (each attempt has its own)
 struct SentAck { uint32_t ack, sender_ts; uint8_t conv[CONV_ID_LEN]; };
 
+#define MAX_RPT_SNR       32   // last SNR of packets repeaters sent us directly (keyed by path hash)
+struct RptSnr { uint8_t hash[3]; uint8_t len; int8_t snr4; uint32_t at; };
+
 struct Discovered { uint8_t pub_key[PUB_KEY_SIZE]; int8_t snr_in4, snr_out4; };   // SNR x4
 
 inline void convOfContact(uint8_t conv[], const ContactInfo& c) {
@@ -40,6 +43,10 @@ class ChatMesh : public BaseChatMesh {
   uint8_t echo_hash[MAX_HASH_SIZE], echo_conv[CONV_ID_LEN];
   uint32_t echo_ts = 0;
   bool echo_wait_tx = false;
+  RptSnr rpt_snr[MAX_RPT_SNR];
+  int rpt_snr_next = 0;
+
+  void noteRepeaterSnr(const uint8_t* hash, uint8_t len, float snr);
   int32_t clock_votes[4];   // (heard timestamp - uptime secs) of recent adverts/messages
   uint8_t vote_src[4];      // who sent each one (pubkey byte / sender name hash)
   int num_votes = 0;
@@ -98,6 +105,8 @@ public:
   ContactInfo heard[MAX_HEARD];   // newest last
   int num_heard = 0;
   bool addHeard(int i);
+
+  bool repeaterSnr(const uint8_t* pub_key, int8_t& snr4, uint32_t& at);   // last direct SNR, if heard this boot
 
   void startDiscovery();
   bool discovering() { return disc_tag && (int32_t)(millis() - disc_until) < 0; }

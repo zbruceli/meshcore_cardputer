@@ -599,9 +599,16 @@ static void drawContactRow(int r, const ContactItem& it) {
     const char* tag = it.idx & IT_HEARD ? "+" : c.isFav() ? "*" : "";
     const char* type = c.type == ADV_TYPE_ROOM ? "[R]" : c.type == ADV_TYPE_SENSOR ? "[S]" : "";
     snprintf(left, sizeof(left), "%s%s%s", tag, type, c.name);
-    fmtHops(hops, c);
-    fmtAge(age, c.lastmod);
-    snprintf(right, sizeof(right), "%s %4s", hops, age);
+    int8_t snr4;
+    uint32_t at;
+    if (c.type == ADV_TYPE_REPEATER && the_mesh.repeaterSnr(c.id.pub_key, snr4, at)) {   // signal of its last relay to us
+      fmtAge(age, at);
+      snprintf(right, sizeof(right), "%+ddB %4s", snr4 / 4, age);
+    } else {
+      fmtHops(hops, c);
+      fmtAge(age, c.lastmod);
+      snprintf(right, sizeof(right), "%s %4s", hops, age);
+    }
   }
   drawRow(r, top + r == sel, left, right, color);
 }
@@ -697,7 +704,16 @@ static void drawContact() {
   else snprintf(s, sizeof(s), "%d hops", c->out_path_len & 63);
   drawRow(3, false, "Path", s);
   fmtAge(s, c->lastmod);
-  drawRow(4, false, "Heard", s);
+  int8_t snr4;
+  uint32_t at;
+  if (c->type == ADV_TYPE_REPEATER && the_mesh.repeaterSnr(c->id.pub_key, snr4, at)) {
+    char age[8];
+    fmtAge(age, at);
+    snprintf(s, sizeof(s), "SNR %.1fdB %s", snr4 / 4.0f, age);
+    drawRow(4, false, "Signal", s);
+  } else {
+    drawRow(4, false, "Heard", s);
+  }
   if (armed) {
     drawRow(5, true, "X again to delete", NULL, C_RED);
   } else if (c->gps_lat || c->gps_lon) {

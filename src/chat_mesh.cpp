@@ -42,6 +42,9 @@ void ChatMesh::begin() {
 void ChatMesh::applyRadio() {
   radio_driver.setParams(prefs.freq, prefs.bw, prefs.sf, prefs.cr);
   radio_driver.setTxPower(prefs.tx_power);
+  // MeshCore 1.16+ uses a 32-symbol preamble at SF<=8; repeaters on 1.15 and older use 16. On this hardware the
+  // v1.15 companion firmware hears (and is heard by) far more of the local mesh, so match the older length.
+  radio.setPreambleLength(16);
 }
 
 void ChatMesh::loop() {
@@ -52,7 +55,36 @@ void ChatMesh::loop() {
 static const char* PKT_TYPES[] = { "REQ", "RESP", "TXT", "ACK", "ADVERT", "GRP_TXT", "GRP_DATA", "ANON_REQ",
                                    "PATH", "TRACE", "MULTI", "CTRL", "?", "?", "?", "RAW" };
 
+// The last hash in a flood packet's path is the repeater that transmitted it to us.
+void ChatMesh::noteRepeaterSnr(const uint8_t* hash, uint8_t len, float snr) {
+  RptSnr* r = NULL;
+  for (int i = 0; i < MAX_RPT_SNR && !r; i++) {
+    if (rpt_snr[i].len == len && memcmp(rpt_snr[i].hash, hash, len) == 0) r = &rpt_snr[i];
+  }
+  if (!r) r = &rpt_snr[rpt_snr_next++ % MAX_RPT_SNR];
+  memcpy(r->hash, hash, len);
+  r->len = len;
+  r->snr4 = (int8_t)(snr * 4);
+  r->at = now();
+}
+
+bool ChatMesh::repeaterSnr(const uint8_t* pub_key, int8_t& snr4, uint32_t& at) {
+  for (int i = 0; i < MAX_RPT_SNR; i++) {   // a 1-byte hash can match more than one repeater: best effort
+    if (rpt_snr[i].len && memcmp(rpt_snr[i].hash, pub_key, rpt_snr[i].len) == 0) {
+      snr4 = rpt_snr[i].snr4;
+      at = rpt_snr[i].at;
+      return true;
+    }
+  }
+  return false;
+}
+
 void ChatMesh::logRx(mesh::Packet* packet, int len, float score) {
+  int hops = packet->getPathHashCount();
+  if (packet->isRouteFlood() && hops > 0) {
+    uint8_t hs = packet->getPathHashSize();
+    noteRepeaterSnr(&packet->path[(hops - 1) * hs], hs, packet->getSNR());
+  }
   if (packet->getPayloadType() == PAYLOAD_TYPE_GRP_TXT && echo_ts) {   // a repeater re-sending our channel msg?
     uint8_t hash[MAX_HASH_SIZE];
     packet->calculatePacketHash(hash);   // excludes the path, so it's the same at every hop
@@ -80,8 +112,14 @@ void ChatMesh::logTx(mesh::Packet* packet, int len) {
     echo_wait_tx = false;
   }
   if (!Serial) return;
-  Serial.printf("TX %-8s %s hops %d len %d\n", PKT_TYPES[packet->getPayloadType() & 0x0F],
-                packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len);
+  static unsigned long air_before = 0;   // airtime of this send, from MeshCore's running total
+  Serial.printf("TX %-8s %s hops %d len %d airtime %lums\n", PKT_TYPES[packet->getPayloadType() & 0x0F],
+                packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len,
+                getTotalAirTime() - air_before);
+  air_before = getTotalAirTime();
+  uint16_t err = radio.getDeviceErrors();   // SX1262 OpError: bit 8 PA ramp, 6 PLL lock, 5 XOSC start, 0-4 calibration
+  if (err) Serial.printf("SX1262 device errors 0x%04x\n", err);
+  radio.clearDeviceErrors();
 }
 
 void ChatMesh::logStatus() {
@@ -115,6 +153,9 @@ void ChatMesh::onDiscoveredContact(ContactInfo& contact, bool is_new, uint8_t pa
   if (Serial) Serial.printf("advert: %s type %d new %d added %d\n", contact.name, contact.type, is_new,
                 lookupContactByPubKey(contact.id.pub_key, PUB_KEY_SIZE) != NULL);
   clockVote(contact.last_advert_timestamp, contact.id.pub_key[0]);
+  if ((path_len & 63) == 0 && contact.type == ADV_TYPE_REPEATER) {   // zero-hop advert: heard it directly
+    noteRepeaterSnr(contact.id.pub_key, 3, radio_driver.getLastSNR());
+  }
   if (is_new && !lookupContactByPubKey(contact.id.pub_key, PUB_KEY_SIZE)) {   // heard, but not added
     int i = 0;
     while (i < num_heard && !heard[i].id.matches(contact.id)) i++;

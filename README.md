@@ -84,7 +84,8 @@ Per screen:
   for a private one. `X` twice leaves a channel or deletes a DM thread.
 - **2 CON:** type letters to filter. `Enter` opens a contact (`+` entries are added first). In a contact:
   `Enter` message, `F` favourite, `R` reset path, `S` share, `X` twice to delete.
-- **3 RPT:** `D` asks nearby repeaters to reply for 60 s. Replies show SNR heard by you / by them.
+- **3 RPT:** `D` asks nearby repeaters to reply for 60 s. Replies show SNR heard by you / by them. Other
+  repeaters show the SNR of the last packet they relayed to you (`-7dB 3m`), or hops and age if not heard yet.
 - **4 RAD:** `Enter` sends a flood advert, `Z` a zero-hop advert.
 - **5 SET:** `,` `/` change a value, `Enter` edits text fields. Factory reset needs `Enter` twice.
 
