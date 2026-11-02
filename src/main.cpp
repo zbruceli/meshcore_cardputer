@@ -33,6 +33,12 @@ void setup() {
 void loop() {
   // Nothing is received or transmitted until onboarding has picked a legal region.
   if (radio_ok && prefs.onboarded) the_mesh.loop();
+
+  static uint32_t next_log = 0;
+  if ((int32_t)(millis() - next_log) >= 0) {   // health line for `pio device monitor`
+    next_log = millis() + 10000;
+    if (radio_ok) the_mesh.logStatus();
+  }
   rtc_clock.tick();
 
   // GPS time beats everything else; re-apply it at most hourly (the RTC drifts slowly)

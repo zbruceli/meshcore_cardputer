@@ -13,7 +13,8 @@ no TX before) · ✅ Public send/receive · ✅ inbox, chat, contacts, radio, se
 
 **Exit criteria**
 - ✅ Public messages both ways with the official app's network
-- 🟡 DM with `[ok]` ACK — needs a second node
+- ✅ DM and contact received from another user · 🟡 our DM's `[ok]` ACK — not yet seen; log shows no ACK
+  returning at our weak SNR (~−9 dB). Late ACKs (any attempt, even after `[x]`) are accepted.
 - ✅ Survives reboot with identity, contacts, settings, messages
 - 🟡 Free heap with 50 contacts (228 KB free at boot with few contacts)
 
@@ -26,7 +27,8 @@ no TX before) · ✅ Public send/receive · ✅ inbox, chat, contacts, radio, se
 - ✅ Settings: frequency / BW / SF / CR, path hash size, auto-add, overwrite, time zone, manual clock
 - ✅ Fair message history (busiest conversation evicted first), beep / mute, TX airtime %
 - ✅ Clock from GPS (verified), else two agreeing mesh senders, else manual
-- ✅ Status bar spacing
+- ✅ Status bar spacing; compose line wraps (3 rows); `Fn+R` @mention reply in channels
+- ✅ Serial log (115200): packet types in/out, DM attempts, ACKs, 10 s radio health line
 
 **Exit criteria**
 - 🟡 Hashtag channel shared with the phone app, messages both ways (a message was received on a joined channel)

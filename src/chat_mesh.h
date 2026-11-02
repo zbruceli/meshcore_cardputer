@@ -17,6 +17,9 @@ enum { CLOCK_NONE, CLOCK_MESH, CLOCK_MANUAL, CLOCK_GPS };
 #define CTL_TYPE_NODE_DISCOVER_REQ   0x80   // from MeshCore's companion_radio / simple_repeater
 #define CTL_TYPE_NODE_DISCOVER_RESP  0x90
 
+#define MAX_SENT_ACKS     16   // expected ACKs of recent DM attempts (each attempt has its own)
+struct SentAck { uint32_t ack, sender_ts; uint8_t conv[CONV_ID_LEN]; };
+
 struct Discovered { uint8_t pub_key[PUB_KEY_SIZE]; int8_t snr_in4, snr_out4; };   // SNR x4
 
 inline void convOfContact(uint8_t conv[], const ContactInfo& c) {
@@ -31,6 +34,8 @@ inline void convOfChannel(uint8_t conv[], const mesh::GroupChannel& ch) {
 class ChatMesh : public BaseChatMesh {
   uint8_t clock_src = CLOCK_NONE;
   uint32_t disc_tag = 0, disc_until = 0;
+  SentAck sent_acks[MAX_SENT_ACKS];
+  int sent_ack_next = 0;
   int32_t clock_votes[4];   // (heard timestamp - uptime secs) of recent adverts/messages
   uint8_t vote_src[4];      // who sent each one (pubkey byte / sender name hash)
   int num_votes = 0;
@@ -50,6 +55,8 @@ protected:
   int  getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_buf[]) override;
   bool putBlobByKey(const uint8_t key[], int key_len, const uint8_t src_buf[], int len) override;
   void onControlDataRecv(mesh::Packet* packet) override;
+  void logRx(mesh::Packet* packet, int len, float score) override;
+  void logTx(mesh::Packet* packet, int len) override;
 
   void sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis) override;
   void sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis) override;
@@ -74,6 +81,7 @@ public:
   void begin();
   void applyRadio();
   void loop();
+  void logStatus();   // one serial line: radio counters, packet queue, error flags
 
   bool sendAdvert(bool flood);
   bool sendChannel(int channel_idx, const char* text);
@@ -89,6 +97,7 @@ public:
 
   void startDiscovery();
   bool discovering() { return disc_tag && (int32_t)(millis() - disc_until) < 0; }
+  bool discoveryRan() { return disc_tag != 0; }
   int  discoverSecsLeft() { return discovering() ? (int32_t)(disc_until - millis()) / 1000 + 1 : 0; }
   Discovered discovered[MAX_DISCOVERED];
   int num_discovered = 0;

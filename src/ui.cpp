@@ -103,15 +103,24 @@ bool editText(char* buf, int max_len, const Key& k) {
   return false;
 }
 
-void drawInput(int row, const char* buf) {
-  int y = BODY_Y + row * ROW_H;
-  canvas.setTextColor(C_AMBER);
-  canvas.drawString(">", 0, y);
+// Compose text, hard-wrapped at COLS-1 chars after a ">" marker ("<" when earlier lines are scrolled off).
+int inputRows(const char* buf, int max_rows) {
+  return min((int)strlen(buf) / (COLS - 1) + 1, max_rows);   // +1: the cursor needs a cell
+}
+
+void drawInput(int row, const char* buf, int rows) {
+  const int per = COLS - 1;
   int len = strlen(buf);
-  const char* tail = len > COLS - 2 ? buf + len - (COLS - 2) : buf;   // keep the cursor in view
-  canvas.drawString(tail, 8, y);
-  int cx = 8 + strlen(tail) * 8;
-  if ((millis() / 500) & 1) canvas.fillRect(cx, y + 13, 7, 2, C_AMBER);
+  int first = max(0, len / per + 1 - rows);   // first wrapped line shown, keeps the cursor in view
+  canvas.setTextColor(C_AMBER);
+  canvas.drawString(first ? "<" : ">", 0, BODY_Y + row * ROW_H);
+  for (int r = 0; r < rows && (first + r) * per <= len; r++) {
+    char line[COLS];
+    StrHelper::strncpy(line, buf + (first + r) * per, per + 1);
+    canvas.drawString(line, 8, BODY_Y + (row + r) * ROW_H);
+  }
+  int cx = 8 + (len % per) * 8, cy = BODY_Y + (row + len / per - first) * ROW_H;
+  if ((millis() / 500) & 1) canvas.fillRect(cx, cy + 13, 7, 2, C_AMBER);
 }
 
 void toast(const char* text) {

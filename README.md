@@ -63,6 +63,8 @@ The bottom line of every screen shows the keys you can use there.
 
 Per screen:
 
+- **In a chat:** just type; the compose line wraps up to 3 rows. `Enter` sends. In a channel, `Fn+R` starts your
+  message with `@[name]` for the latest sender (press again for earlier senders), the apps' mention format.
 - **1 MSG:** `A` add a channel: type `#name` for a hashtag channel, or a name and then the key (base64 or hex)
   for a private one. `X` twice leaves a channel or deletes a DM thread.
 - **2 CON:** type letters to filter. `Enter` opens a contact (`+` entries are added first). In a contact:

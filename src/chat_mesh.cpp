@@ -49,6 +49,30 @@ void ChatMesh::loop() {
   checkDMRetries();
 }
 
+static const char* PKT_TYPES[] = { "REQ", "RESP", "TXT", "ACK", "ADVERT", "GRP_TXT", "GRP_DATA", "ANON_REQ",
+                                   "PATH", "TRACE", "MULTI", "CTRL", "?", "?", "?", "RAW" };
+
+void ChatMesh::logRx(mesh::Packet* packet, int len, float score) {
+  if (!Serial) return;   // USB not connected: don't spend time printing
+  Serial.printf("RX %-8s %s hops %d len %d snr %.1f\n", PKT_TYPES[packet->getPayloadType() & 0x0F],
+                packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len, packet->getSNR());
+}
+
+void ChatMesh::logTx(mesh::Packet* packet, int len) {
+  if (!Serial) return;
+  Serial.printf("TX %-8s %s hops %d len %d\n", PKT_TYPES[packet->getPayloadType() & 0x0F],
+                packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len);
+}
+
+void ChatMesh::logStatus() {
+  if (!Serial) return;
+  Serial.printf("rx %u tx %u rxerr %u | queued %d free %d | err 0x%x recvmode %d | rssi %.0f nf %d | heap %u\n",
+                (unsigned)radio_driver.getPacketsRecv(), (unsigned)radio_driver.getPacketsSent(),
+                (unsigned)radio_driver.getPacketsRecvErrors(), _mgr->getOutboundTotal(), _mgr->getFreeCount(),
+                _err_flags, radio_driver.isInRecvMode(), radio_driver.getCurrentRSSI(),
+                radio_driver.getNoiseFloor(), (unsigned)ESP.getFreeHeap());
+}
+
 void ChatMesh::sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis) {
   sendFlood(pkt, delay_millis, prefs.path_hash_size);
 }
@@ -68,6 +92,8 @@ uint32_t ChatMesh::calcDirectTimeoutMillisFor(uint32_t pkt_airtime_millis, uint8
 // ---- receive ----
 
 void ChatMesh::onDiscoveredContact(ContactInfo& contact, bool is_new, uint8_t path_len, const uint8_t* path) {
+  if (Serial) Serial.printf("advert: %s type %d new %d added %d\n", contact.name, contact.type, is_new,
+                lookupContactByPubKey(contact.id.pub_key, PUB_KEY_SIZE) != NULL);
   clockVote(contact.last_advert_timestamp, contact.id.pub_key[0]);
   if (is_new && !lookupContactByPubKey(contact.id.pub_key, PUB_KEY_SIZE)) {   // heard, but not added
     int i = 0;
@@ -141,8 +167,15 @@ void ChatMesh::clockVote(uint32_t ts, uint8_t src) {
 
 void ChatMesh::onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t sender_timestamp, const char* text) {
   clockVote(sender_timestamp, from.id.pub_key[0]);
+  uint8_t conv[CONV_ID_LEN];
+  convOfContact(conv, from);
+  for (int i = msgCount() - 1; i >= 0; i--) {   // a retry of a message we already have (it was ACKed again)
+    Msg* d = msgAt(i);
+    if (!d->out && d->sender_ts == sender_timestamp && memcmp(d->conv, conv, CONV_ID_LEN) == 0 &&
+        strcmp(d->text, text) == 0) return;
+  }
   Msg* m = msgAdd();
-  convOfContact(m->conv, from);
+  memcpy(m->conv, conv, CONV_ID_LEN);
   m->ts = now();
   m->sender_ts = sender_timestamp;
   m->unread = 1;
@@ -161,15 +194,25 @@ void ChatMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh::Pac
   StrHelper::strncpy(m->text, text, sizeof(m->text));
 }
 
+// An ACK may belong to any attempt, and over many flood hops it can arrive after we've retried or given up.
 ContactInfo* ChatMesh::processAck(const uint8_t* data) {
-  for (int i = msgCount() - 1; i >= 0; i--) {
-    Msg* m = msgAt(i);
-    if (m->out && m->status == ST_SENDING && memcmp(data, &m->ack, 4) == 0) {
-      m->status = ST_ACKED;
-      msgsChanged();
-      msg_seq++;   // redraw
-      return contactByConv(m->conv);
+  if (Serial) Serial.printf("ack %02x%02x%02x%02x\n", data[0], data[1], data[2], data[3]);
+  for (int a = 0; a < MAX_SENT_ACKS; a++) {
+    SentAck& sa = sent_acks[a];
+    if (sa.ack == 0 || memcmp(data, &sa.ack, 4) != 0) continue;
+    for (int i = msgCount() - 1; i >= 0; i--) {
+      Msg* m = msgAt(i);
+      if (m->out && m->sender_ts == sa.sender_ts && memcmp(m->conv, sa.conv, CONV_ID_LEN) == 0) {
+        if (m->status != ST_ACKED) {
+          m->status = ST_ACKED;
+          msgsChanged();
+          msg_seq++;   // redraw
+        }
+        break;
+      }
     }
+    sa.ack = 0;
+    return contactByConv(sa.conv);
   }
   return NULL;
 }
@@ -218,6 +261,12 @@ void ChatMesh::sendDMAttempt(Msg& m, ContactInfo& to) {
   } else {
     m.status = ST_SENDING;
     m.deadline = millis() + est_timeout;
+    if (Serial) Serial.printf("DM attempt %d %s, expect ack %08x, timeout %u ms\n", m.attempt,
+                              rc == MSG_SEND_SENT_FLOOD ? "flood" : "direct", (unsigned)m.ack, (unsigned)est_timeout);
+    SentAck& sa = sent_acks[sent_ack_next++ % MAX_SENT_ACKS];
+    sa.ack = m.ack;
+    sa.sender_ts = m.sender_ts;
+    memcpy(sa.conv, m.conv, CONV_ID_LEN);
   }
   msgsChanged();
 }

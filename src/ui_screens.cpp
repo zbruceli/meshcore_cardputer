@@ -13,6 +13,7 @@ static int sel, top;                   // list cursor
 static char input[MAX_TEXT_LEN + 1];   // compose line / text editor
 static uint8_t cur_conv[CONV_ID_LEN];  // open chat, or selected contact (as a DM conv id)
 static int chat_scroll;                // lines scrolled up from the newest
+static int reply_back;                 // Fn+R: how many distinct senders back the @mention is
 static bool from_settings;             // region screen opened from SET
 static bool armed;                     // destructive key pressed once, press again to confirm
 static char filter[16];                // contacts: typed name filter
@@ -31,6 +32,7 @@ static void openChat(const uint8_t conv[], Screen back) {
   memcpy(cur_conv, conv, CONV_ID_LEN);
   chat_back = back;
   chat_scroll = 0;
+  reply_back = 0;
   input[0] = 0;
   screen = S_CHAT;
 }
@@ -171,7 +173,7 @@ static void drawEdit() {
   const EditField& f = FIELDS[edit_field];
   drawStatus(prefs.onboarded ? f.title : "SETUP 2/4");
   drawRow(0, false, f.prompt);
-  drawInput(2, input);
+  drawInput(2, input, 2);
   drawRow(4, false, f.help, NULL, C_DIM);
   drawHints("ENT ok   ` back");
 }
@@ -431,7 +433,8 @@ static void drawChat() {
   convName(title, sizeof(title), cur_conv);
   markConvRead();
   drawStatus(title);
-  const int visible = BODY_ROWS - 1;   // last row is the compose line
+  int compose = inputRows(input, 3);   // compose line grows up to 3 rows, history gets the rest
+  const int visible = BODY_ROWS - compose;
   int n = buildChatLines(visible + chat_scroll);
   if (chat_scroll > n - visible) chat_scroll = max(0, n - visible);
   for (int r = 0; r < visible; r++) {
@@ -439,13 +442,44 @@ static void drawChat() {
     if (idx < n) drawRow(r, false, lines[idx].text, NULL, lines[idx].color);
   }
   if (n == 0) drawRow(1, false, "No messages yet.", NULL, C_DIM);
-  drawInput(BODY_ROWS - 1, input);
-  drawHints("ENT send  Fn;. scroll ` back");
+  drawInput(visible, input, compose);
+  drawHints(cur_conv[0] == CONV_CHANNEL ? "ENT send  Fn+R @  Fn;. scroll" : "ENT send  Fn;. scroll ` back");
+}
+
+// Puts "@[sender] " (the MeshCore apps' mention format) in front of the compose line. Each press goes one
+// distinct sender further back, newest first, and wraps around.
+static void mentionSender(int max_len) {
+  char names[8][32];
+  int n = 0;
+  for (int i = msgCount() - 1; i >= 0 && n < 8; i--) {
+    Msg* m = msgAt(i);
+    const char* p = strstr(m->text, ": ");
+    if (m->out || !p || memcmp(m->conv, cur_conv, CONV_ID_LEN) != 0) continue;
+    int l = min((int)(p - m->text), 31);
+    memcpy(names[n], m->text, l);
+    names[n][l] = 0;
+    bool seen = false;
+    for (int j = 0; j < n; j++) seen |= strcmp(names[j], names[n]) == 0;
+    if (!seen) n++;
+  }
+  if (n == 0) { toast("No one to reply to yet"); return; }
+
+  const char* body = input;   // drop a previous mention
+  if (strncmp(input, "@[", 2) == 0 && strstr(input, "] ")) body = strstr(input, "] ") + 2;
+  char s[MAX_TEXT_LEN + 1];
+  snprintf(s, sizeof(s), "@[%s] %s", names[reply_back % n], body);
+  s[max_len] = 0;
+  strcpy(input, s);
+  reply_back++;
 }
 
 static void keyChat(const Key& k) {
   bool is_channel = cur_conv[0] == CONV_CHANNEL;
   int max_len = is_channel ? MAX_TEXT_LEN - strlen(prefs.name) - 2 : MAX_TEXT_LEN;
+  if (is_channel && k.code == K_CHAR && k.fn && (k.ch == 'r' || k.ch == 'R')) {
+    mentionSender(max_len);
+    return;
+  }
   if (editText(input, max_len, k)) return;
 
   if (k.code == K_UP) chat_scroll++;
@@ -462,6 +496,7 @@ static void keyChat(const Key& k) {
     }
     input[0] = 0;
     chat_scroll = 0;
+    reply_back = 0;
   }
 }
 
@@ -586,7 +621,11 @@ static void drawContacts(bool repeaters) {
     drawRow(3, false, "adverts are received.", NULL, C_DIM);
   }
   char hint[COLS + 1];
-  if (repeaters && the_mesh.discovering()) snprintf(hint, sizeof(hint), "Listening %2ds  SNR in/out", the_mesh.discoverSecsLeft());
+  int replies = the_mesh.num_discovered;
+  if (repeaters && the_mesh.discovering())
+    snprintf(hint, sizeof(hint), "Listening %2ds: %d repl%s", the_mesh.discoverSecsLeft(), replies, replies == 1 ? "y" : "ies");
+  else if (repeaters && the_mesh.discoveryRan())
+    snprintf(hint, sizeof(hint), "D again  last: %d repl%s", replies, replies == 1 ? "y" : "ies");
   else if (repeaters) strcpy(hint, "ENT info  D discover  +=new");
   else strcpy(hint, filter[0] ? "ENT info  ` clear filter" : "ENT info  type to filter");
   drawHints(hint);
@@ -690,6 +729,12 @@ static void keyContact(const Key& k) {
 
 // ================================================================ radio
 
+static void fmtCount(char* dest, uint32_t n) {   // at most 4 chars: 9999, 12k, 999k, 12M
+  if (n < 10000) sprintf(dest, "%u", (unsigned)n);
+  else if (n < 1000000) sprintf(dest, "%uk", (unsigned)(n / 1000));
+  else sprintf(dest, "%uM", (unsigned)(n / 1000000));
+}
+
 static void drawRadio() {
   char s[COLS + 1];
   drawStatus("4 RAD");
@@ -716,8 +761,10 @@ static void drawRadio() {
            radio_driver.getLastRSSI(), radio_driver.getLastSNR(), radio_driver.getNoiseFloor());
   drawRow(4, false, s);
   float air = the_mesh.getTotalAirTime() * 100.0f / max(1UL, millis());   // our TX share of time since boot
-  snprintf(s, sizeof(s), "RX%u TX%u AIR%.1f%% %.2fV", (unsigned)radio_driver.getPacketsRecv(),
-           (unsigned)radio_driver.getPacketsSent(), air, board.getBattMilliVolts() / 1000.0f);
+  char rx[8], tx[8];
+  fmtCount(rx, radio_driver.getPacketsRecv());
+  fmtCount(tx, radio_driver.getPacketsSent());
+  snprintf(s, sizeof(s), "RX%-4s TX%-4s AIR%.1f%% %.2fV", rx, tx, air, board.getBattMilliVolts() / 1000.0f);
   drawRow(5, false, s);
   drawHints("ENT advert  Z zero-hop adv");
 }
