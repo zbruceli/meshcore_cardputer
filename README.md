@@ -22,7 +22,8 @@ talks to MeshCore phone apps, companion radios, Ripple devices and repeaters.
 - **Radio info:** big frequency readout, RSSI / SNR / noise floor, packet counts, airtime, battery.
 - **Settings:** region or manual radio parameters, TX power, path hash size, auto-add, brightness, screen
   timeout, beep, time zone, clock.
-- **Clock:** from the Cap's GPS when it has a fix, otherwise learned from the mesh, or set by hand.
+- **Clock:** learned from the mesh, or set by hand. (The Cap's GPS is switched off for now while a radio issue is
+  investigated.)
 - **Power:** screen dims and turns off when idle, CPU slows down while it's off.
 
 ## Hardware

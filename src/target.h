@@ -23,6 +23,8 @@ extern AutoDiscoverRTCClock rtc_clock;
 extern SensorManager sensors;
 
 bool radio_init();
+void ioexDiag();   // print the Cap I/O expander registers (serial log)
 void gpsBegin();
+void gpsOutput(bool rmc);   // true: RMC once a second, false: GPS module silent
 uint32_t gpsReadTime();   // UTC epoch once a valid RMC sentence (fix) arrives, else 0. Position is ignored for now.
 mesh::LocalIdentity radio_new_identity();

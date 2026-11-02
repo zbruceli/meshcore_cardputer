@@ -38,15 +38,23 @@ void loop() {
   if ((int32_t)(millis() - next_log) >= 0) {   // health line for `pio device monitor`
     next_log = millis() + 10000;
     if (radio_ok) the_mesh.logStatus();
+    ioexDiag();
   }
   rtc_clock.tick();
 
-  // GPS time beats everything else; re-apply it at most hourly (the RTC drifts slowly)
+  // GPS time beats everything else. Once set, the GPS is silenced (its NMEA stream is suspected of hurting the
+  // radio) and woken hourly to re-sync (the RTC drifts slowly). Inactive while gpsBegin() keeps the GPS silent.
   static uint32_t gps_set_at = 0;
+  static bool gps_on = true;
   uint32_t gps_time = gpsReadTime();
-  if (gps_time && (the_mesh.clockSource() != CLOCK_GPS || millis() - gps_set_at > 3600000UL)) {
+  if (gps_time && gps_on) {
     the_mesh.setClock(gps_time, CLOCK_GPS);
     gps_set_at = millis();
+    gpsOutput(false);
+    gps_on = false;
+  } else if (!gps_on && millis() - gps_set_at > 3600000UL) {
+    gpsOutput(true);
+    gps_on = true;
   }
 
   storeLoop();

@@ -103,6 +103,7 @@ void ChatMesh::logRx(mesh::Packet* packet, int len, float score) {
                 packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len, packet->getSNR(),
                 radio.getFrequencyError());
   if (packet->hasTransportCodes()) Serial.printf(" scope %04x", packet->transport_codes[0]);   // region-scoped flood
+  if (packet->getPayloadType() == PAYLOAD_TYPE_GRP_TXT) Serial.printf(" ch %02x", packet->payload[0]);   // channel hash
   Serial.println();
 }
 
@@ -253,6 +254,7 @@ void ChatMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh::Pac
   m->sender_ts = timestamp;
   m->unread = 1;
   StrHelper::strncpy(m->text, text, sizeof(m->text));
+  if (Serial) Serial.printf("chan %02x decrypted, %d chars\n", channel.hash[0], (int)strlen(text));
 }
 
 // An ACK may belong to any attempt, and over many flood hops it can arrive after we've retried or given up.

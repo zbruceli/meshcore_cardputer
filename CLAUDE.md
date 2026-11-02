@@ -36,13 +36,16 @@ src/ui_screens.cpp   per-screen draw()/key() + dispatch
 
 ## Hardware facts
 
-- LoRa SX1262: NSS 5, DIO1 4, RST 3, BUSY 6, SCK 40, MOSI 14, MISO 39; DIO2 = RF switch; TCXO 3.3 V. 868–923 MHz only.
-- Cap I/O expander PI4IOE5V6408 @ 0x43 on internal I2C (SDA 8 / SCL 9, owned by M5Unified): P0 high = RF path on.
+- LoRa SX1262: NSS 5, DIO1 4, RST 3, BUSY 6, SCK 40, MOSI 14, MISO 39; DIO2 = RF switch; TCXO 1.8 V. 868–923 MHz only.
+  Radio set up as the sosprz fork: default `SPIClass` (SPI3) at 1 MHz, 140 mA, plus STDBY_XOSC (TCXO kept running).
+- Cap I/O expander PI4IOE5V6408 @ 0x43 on internal I2C (SDA 8 / SCL 9, owned by M5Unified): P0 high = RF path on
+  (P0 "BYPASS" -> Stamp LoRa-1262 pin "SW"; without it TX is about -15 dBm, per d4rkmen/plai #11).
   Arduino `Wire` is moved to the Grove port (SDA 2 / SCL 1).
-- Cap GPS ATGM336H-6N on UART1: ESP RX 15, TX 13, 115200 8N1. No power-enable pin found. Used for the clock only.
+- Cap GPS ATGM336H-6N on UART1: ESP RX 15, TX 13, 115200 8N1. No power-enable pin found: always on, streams
+  NMEA unless told otherwise (`$PCAS03`). Silenced from boot for now (no GPS clock) while TX is investigated.
 - SD card shares the LoRa SPI bus (CS 12, kept high). Don't drive G46 (not a Cap power enable, per newer ports).
-- SX1262 PA current limit 240 mA, as in MeshCore's Cardputer-ADV builds. With 140 mA we heard the mesh but nothing
-  we sent was ever repeated; the limit is the suspected cause (unverified).
+- Open problem: we hear repeaters at +2 dB but are almost never heard back, with any radio setting tried (3.3/1.8 V,
+  140/240 mA, either SPI bus, GPS silent, XOSC standby). Next: measure TX against a second node.
 - Battery ADC G10 (×2). G0 = user button (flood advert). Display 240×135. Keyboard TCA8418 (auto-detected).
 - Prior port to crib from: https://github.com/Stachugit/MeshCore-Cardputer-ADV (`variants/m5stack_cardputer/`).
 

@@ -5,8 +5,9 @@
 
 CardputerBoard board;
 
-static SPIClass spi(FSPI);
-CustomSX1262 radio = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY, spi);
+// As the sosprz fork: default SPIClass (HSPI = SPI3, shared with the display) at SPISettings() = 1 MHz
+static SPIClass spi;
+CustomSX1262 radio = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY, spi, SPISettings());
 CustomSX1262Wrapper radio_driver(radio, board);
 
 ESP32RTCClock fallback_clock;
@@ -44,7 +45,24 @@ uint8_t CardputerBoard::battPercent() {
 bool radio_init() {
   fallback_clock.begin();
   rtc_clock.begin(Wire);
-  return radio.std_init(&spi);
+  if (!radio.std_init(&spi)) return false;
+
+  // As d4rkmen/plai (heard on the Cap LoRa-1262): keep the TCXO running in standby (STDBY_XOSC) instead
+  // of RadioLib's STDBY_RC, which stops it before every TX and gives it only 5 ms to restart.
+  radio.standbyXOSC = true;
+  uint8_t fallback = RADIOLIB_SX126X_RX_TX_FALLBACK_MODE_STDBY_XOSC;
+  radio.getMod()->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_RX_TX_FALLBACK_MODE, &fallback, 1);
+  radio.standby();
+  return true;
+}
+
+// Cap PI4IOE (0x43) registers for the serial log. P0 must stay output (0x03 bit0), high (0x05), not hi-Z (0x07); 0x0F = input levels
+void ioexDiag() {
+  m5::PI4IOE5V6408_Class io;
+  if (!io.begin()) { Serial.println("ioex: not found"); return; }
+  Serial.printf("ioex: dir 0x%02X out 0x%02X hiz 0x%02X pull 0x%02X/0x%02X in 0x%02X\n", io.readRegister8(0x03),
+                io.readRegister8(0x05), io.readRegister8(0x07), io.readRegister8(0x0B), io.readRegister8(0x0D),
+                io.readRegister8(0x0F));
 }
 
 // ---- GPS: parse NMEA RMC for date + time only ----
@@ -52,6 +70,14 @@ bool radio_init() {
 void gpsBegin() {
   Serial1.setRxBufferSize(1024);   // 115200 baud and loop() may be busy drawing for a few ms
   Serial1.begin(115200, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
+  gpsOutput(false);   // silent from boot, as the fork: no GPS clock until TX is sorted out
+}
+
+// The module is always powered and streams every NMEA sentence by default. Keep only RMC (all we parse) while
+// we want the time, and nothing at all otherwise, as the sosprz fork silences it at boot.
+// CASIC PCAS03 fields: GGA,GLL,GSA,GSV,RMC,VTG,ZDA,ANT,DHV,LPS,,,UTC,GST. Not saved on the module.
+void gpsOutput(bool rmc) {
+  Serial1.print(rmc ? "$PCAS03,0,0,0,0,1,0,0,0,0,0,,,0,0*03\r\n" : "$PCAS03,0,0,0,0,0,0,0,0,0,0,,,0,0*02\r\n");
 }
 
 static bool nmeaChecksumOk(const char* s) {
