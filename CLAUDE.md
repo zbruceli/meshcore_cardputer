@@ -45,7 +45,8 @@ src/ui_screens.cpp   per-screen draw()/key() + dispatch
   NMEA unless told otherwise (`$PCAS03`). Silenced from boot for now (no GPS clock) while TX is investigated.
 - SD card shares the LoRa SPI bus (CS 12, kept high). Don't drive G46 (not a Cap power enable, per newer ports).
 - Open problem: we hear repeaters at +2 dB but are almost never heard back, with any radio setting tried (3.3/1.8 V,
-  140/240 mA, either SPI bus, GPS silent, XOSC standby). Next: measure TX against a second node.
+  140/240 mA, either SPI bus, GPS silent, XOSC standby, LDO regulator). Official Meshtastic on the same unit fails TX the same way,
+  so it isn't our code: this unit's TX path or the link budget. Next: measure TX against a second node.
 - Battery ADC G10 (×2). G0 = user button (flood advert). Display 240×135. Keyboard TCA8418 (auto-detected).
 - Prior port to crib from: https://github.com/Stachugit/MeshCore-Cardputer-ADV (`variants/m5stack_cardputer/`).
 
