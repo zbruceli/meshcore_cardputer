@@ -284,7 +284,7 @@ static void keyConfirm(const Key& k) {
 
 // ================================================================ inbox
 
-struct ConvItem { uint8_t conv[CONV_ID_LEN]; uint32_t last_ts; uint8_t unread; };
+struct ConvItem { uint8_t conv[CONV_ID_LEN]; uint32_t last_ts; uint8_t unread, order; };
 #define MAX_CONVS 32
 static ConvItem convs[MAX_CONVS];
 static int nconvs;
@@ -294,7 +294,7 @@ static ConvItem* findConv(const uint8_t conv[]) {
   return NULL;
 }
 
-// channels first (fixed order), then DM threads, newest first
+// newest activity first: channels and DM threads mixed; conversations without messages last, channels in order
 static void buildConvs() {
   nconvs = 0;
   ChannelDetails ch;
@@ -303,7 +303,6 @@ static void buildConvs() {
     memset(&convs[nconvs], 0, sizeof(ConvItem));
     convOfChannel(convs[nconvs++].conv, ch.channel);
   }
-  int nchannels = nconvs;
   for (int i = 0; i < msgCount(); i++) {
     Msg* m = msgAt(i);
     ConvItem* c = findConv(m->conv);
@@ -316,9 +315,12 @@ static void buildConvs() {
     c->last_ts = m->ts;
     c->unread += m->unread;
   }
-  qsort(&convs[nchannels], nconvs - nchannels, sizeof(ConvItem), [](const void* a, const void* b) {
-    uint32_t ta = ((const ConvItem*)a)->last_ts, tb = ((const ConvItem*)b)->last_ts;
-    return ta == tb ? 0 : (ta < tb ? 1 : -1);
+  for (int i = 0; i < nconvs; i++) convs[i].order = i;   // ties (no messages) keep channel order
+  qsort(convs, nconvs, sizeof(ConvItem), [](const void* a, const void* b) {
+    const ConvItem* x = (const ConvItem*)a;
+    const ConvItem* y = (const ConvItem*)b;
+    if (x->last_ts != y->last_ts) return x->last_ts < y->last_ts ? 1 : -1;
+    return (int)x->order - (int)y->order;
   });
 }
 
@@ -544,32 +546,49 @@ static void addHeardItems(bool repeaters) {
   }
 }
 
-// contacts: favourites first, then by last heard
+static uint32_t lastMsgTs(const uint8_t conv[]) {   // newest message in a conversation, 0 if none
+  for (int i = msgCount() - 1; i >= 0; i--) if (memcmp(msgAt(i)->conv, conv, CONV_ID_LEN) == 0) return msgAt(i)->ts;
+  return 0;
+}
+
+// contacts: favourites first, then by latest activity (message to/from them, or their advert)
 static void buildContacts() {
   ncitems = 0;
   ContactInfo c;
   for (int i = 0; i < the_mesh.getTotalContactSlots(); i++) {
     if (!the_mesh.getContactByIdx(i, c) || c.type == ADV_TYPE_NONE || c.type == ADV_TYPE_REPEATER) continue;
-    if (matchesFilter(c.name)) citems[ncitems++] = { (uint16_t)i, (c.isFav() ? 0x80000000 : 0) | (c.lastmod >> 1) };
+    if (!matchesFilter(c.name)) continue;
+    uint8_t conv[CONV_ID_LEN];
+    convOfContact(conv, c);
+    uint32_t active = max(c.lastmod, lastMsgTs(conv));
+    citems[ncitems++] = { (uint16_t)i, (c.isFav() ? 0x80000000 : 0) | (active >> 1) };
   }
   addHeardItems(false);
   sortItems();
 }
 
-// repeaters: discovery replies first (strongest first), then the rest by last heard
+// repeaters: while discovering, the replies first (strongest first); otherwise by when we last heard each one
+// (its advert, a packet it relayed to us, or its discovery reply)
 static void buildRepeaters() {
   ncitems = 0;
+  bool live = client.discovering();
   for (int i = 0; i < client.num_discovered; i++) {
-    citems[ncitems++] = { (uint16_t)(IT_DISC | i), 0x80000000 | (uint32_t)(client.discovered[i].snr_in4 + 128) };
+    const Discovered& d = client.discovered[i];
+    if (live) citems[ncitems++] = { (uint16_t)(IT_DISC | i), 0x80000000 | (uint32_t)(d.snr_in4 + 128) };
+    else if (!the_mesh.lookupContactByPubKey(d.pub_key, PUB_KEY_SIZE)) citems[ncitems++] = { (uint16_t)(IT_DISC | i), d.at >> 1 };
   }
   ContactInfo c;
   for (int i = 0; i < the_mesh.getTotalContactSlots(); i++) {
     if (!the_mesh.getContactByIdx(i, c) || c.type != ADV_TYPE_REPEATER) continue;
     bool replied = false;
-    for (int d = 0; d < client.num_discovered; d++) {
+    for (int d = 0; live && d < client.num_discovered; d++) {
       replied |= memcmp(client.discovered[d].pub_key, c.id.pub_key, PUB_KEY_SIZE) == 0;
     }
-    if (!replied) citems[ncitems++] = { (uint16_t)i, c.lastmod >> 1 };
+    if (replied) continue;
+    int8_t snr4;
+    uint32_t heard = c.lastmod, relayed;
+    if (client.repeaterSnr(c.id.pub_key, snr4, relayed)) heard = max(heard, relayed);
+    citems[ncitems++] = { (uint16_t)i, heard >> 1 };
   }
   addHeardItems(true);
   sortItems();

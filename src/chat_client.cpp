@@ -150,6 +150,8 @@ void ChatClient::onControlDataRecv(const mesh::Packet* packet) {
   memcpy(d.pub_key, key, PUB_KEY_SIZE);
   d.snr_out4 = (int8_t)packet->payload[1];
   d.snr_in4 = (int8_t)(packet->getSNR() * 4);
+  d.at = now();
+  noteRepeaterSnr(key, 3, packet->getSNR());   // heard it directly, just now
 }
 
 void ChatClient::setClock(uint32_t epoch, uint8_t src) {

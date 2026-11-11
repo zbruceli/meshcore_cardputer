@@ -20,7 +20,7 @@ struct SentAck { uint32_t ack, sender_ts; uint8_t conv[CONV_ID_LEN]; };
 #define MAX_RPT_SNR       32   // last SNR of packets repeaters sent us directly (keyed by path hash)
 struct RptSnr { uint8_t hash[3]; uint8_t len; int8_t snr4; uint32_t at; };
 
-struct Discovered { uint8_t pub_key[PUB_KEY_SIZE]; int8_t snr_in4, snr_out4; };   // SNR x4
+struct Discovered { uint8_t pub_key[PUB_KEY_SIZE]; int8_t snr_in4, snr_out4; uint32_t at; };   // SNR x4
 
 // Auto-add choices, as the app's "Auto Add" settings (NodePrefs manual_add_contacts / autoadd_config)
 enum { ADD_CHAT_RPT, ADD_ALL, ADD_CHAT, ADD_OFF, NUM_ADD_MODES };
