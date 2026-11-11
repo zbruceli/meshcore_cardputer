@@ -46,7 +46,8 @@ src/ui_screens.cpp   per-screen draw()/key() + dispatch
 - SD card shares the LoRa SPI bus (CS 12, kept high). Don't drive G46 (not a Cap power enable, per newer ports).
 - Open problem: we hear repeaters at +2 dB but are almost never heard back, with any radio setting tried (3.3/1.8 V,
   140/240 mA, either SPI bus, GPS silent, XOSC standby, LDO regulator). Official Meshtastic on the same unit fails TX the same way,
-  so it isn't our code: this unit's TX path or the link budget. Next: measure TX against a second node.
+  so it isn't our code. RTL-SDR (`scripts/sdr_burst.py`): our TX is within ~0.5 dB of a T-Deck Plus, and the
+  T-Deck can't reach the channels from the same window either: it's the location / link budget, not the unit.
 - Battery ADC G10 (×2). G0 = user button (flood advert). Display 240×135. Keyboard TCA8418 (auto-detected).
 - Prior port to crib from: https://github.com/Stachugit/MeshCore-Cardputer-ADV (`variants/m5stack_cardputer/`).
 
