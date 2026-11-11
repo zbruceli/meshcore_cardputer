@@ -1,0 +1,42 @@
+# Republish the web installer (web/) without a firmware release: uses the latest GitHub Release's .bin.
+# Runs on demand and whenever web/ changes on main. Firmware releases still go through release.yml (tags).
+name: Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["web/**"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Web installer with the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh release view --json tagName -q .tagName)
+          mkdir -p _site
+          cp web/* _site/
+          gh release download "$TAG" --pattern "*.bin" --output _site/firmware.bin
+          sed -i "s/VERSION/${TAG#v}/g" _site/index.html _site/manifest.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

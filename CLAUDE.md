@@ -77,6 +77,8 @@ python3 scripts/render_screens.py   # README screenshots (docs/screens/) from de
 
 Release: bump `FW_VERSION` (and `FIRMWARE_VERSION`) in `platformio.ini`, commit, push tag `v<FW_VERSION>`; the
 release workflow builds the `.bin`, attaches it to a GitHub Release and publishes `web/` to GitHub Pages.
+Installer-page changes alone: `web/` changes on `main` (or a manual run) republish via `pages.yml` with the latest
+release's `.bin`.
 
 ## Working rules
 
