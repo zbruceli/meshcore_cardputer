@@ -34,6 +34,14 @@
       <li>When it's done, switch the Cardputer off and on (don't hold G0) and follow the setup on screen.</li>
     </ol>
 
+    <p class="sub">If no port shows up, or installing fails, put the Cardputer in download mode first:</p>
+    <ol>
+      <li>Switch the side power switch to OFF.</li>
+      <li>Hold the G0 button and plug in the USB-C cable.</li>
+      <li>Release G0 after 2–3 seconds (once it's powered on). The screen stays dark; that's normal.</li>
+      <li>Press Install again. Afterwards, switch it off and on to start the new firmware.</li>
+    </ol>
+
     <esp-web-install-button manifest="manifest.json">
       <button slot="activate">Install vVERSION</button>
       <span slot="unsupported">This browser can't flash devices. Use Chrome or Edge on a computer.</span>
@@ -42,7 +50,7 @@
 
     <p class="note">
       Updating? Don't erase, and your contacts, channels and messages are kept. Erasing gives the device a new
-      identity. If the port doesn't show up, hold G0 while switching on to enter download mode.
+      identity. After setup, pair the official MeshCore app over Bluetooth with the PIN shown in Settings.
     </p>
     <p class="note">
       <a href="https://github.com/zbruceli/meshcore_cardputer">Source, docs and releases on GitHub</a> · MIT license ·

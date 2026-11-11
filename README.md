@@ -1,131 +1,80 @@
 # MeshCore Cardputer
 
-A standalone [MeshCore](https://github.com/meshcore-dev/MeshCore) chat client for the
-**M5Stack Cardputer-Adv** with the **Cap LoRa-1262** module. Its own screen and keyboard work without a phone, like a
-pocket pager for the mesh, and it can also pair with the **official MeshCore phone app** over Bluetooth.
+A [MeshCore](https://github.com/meshcore-dev/MeshCore) chat client for the **M5Stack Cardputer-Adv** with the
+**Cap LoRa-1262**. Its screen and keyboard work on their own, like a pocket pager for the mesh, and the
+**official MeshCore phone app** can pair with it over Bluetooth at the same time.
 
-Amber-on-black, pager / ham-rig style UI on the 240×135 display. Built on the official MeshCore library, so it
-talks to MeshCore phone apps, companion radios, Ripple devices and repeaters.
+The mesh runs on MeshCore's own companion engine, so it talks to MeshCore apps, companion radios, Ripple devices
+and repeaters.
 
-> **Status:** Phase 1 runs on the hardware. DM delivery confirmations and hashtag channels shared with the phone
-> app are built but not yet confirmed against another user. See [roadmap_plan.md](roadmap_plan.md).
+| | |
+|---|---|
+| ![Inbox](docs/screens/msg_inbox.png) | ![Channel chat](docs/screens/chat.png) |
+| **1 MSG** inbox: channels and DMs, newest first | Channel chat: `[heard 3]` = repeaters re-sent it |
+| ![Contacts](docs/screens/contacts.png) | ![Contact](docs/screens/contact.png) |
+| **2 CON** contacts: favourites, then by activity | Contact details and actions |
+| ![Repeaters](docs/screens/repeaters.png) | ![Radio](docs/screens/radio.png) |
+| **3 RPT** repeaters: discovery replies, SNR in/out | **4 RAD** radio: frequency, signal, packet counts |
+| ![Settings](docs/screens/settings.png) | ![Setup](docs/screens/setup_region.png) |
+| **5 SET** settings, incl. Bluetooth and app PIN | First-boot setup: pick your region |
 
 ## Features
 
-- **Onboarding without a phone:** pick a region preset → name → time zone → on air. Nothing is transmitted
-  until a region is chosen.
-- **Messaging:** Public channel, `#hashtag` channels, private channels (name + key), direct messages with
-  delivery confirmation and retries. Unread counts, beep and on-screen notice for new messages.
-- **Contacts:** auto-added from adverts (chat users and repeaters by default), favourites, delete, reset path,
-  share, type-to-filter, overwrite-oldest when full.
-- **Repeater discovery:** ask nearby repeaters to reply and see them sorted by signal (SNR both ways).
-- **Radio info:** big frequency readout, RSSI / SNR / noise floor, packet counts, airtime, battery.
-- **Settings:** region or manual radio parameters, TX power, path hash size, auto-add, brightness, screen
-  timeout, beep, time zone, clock.
-- **Clock:** learned from the mesh, or set by hand. (The Cap's GPS is switched off for now while a radio issue is
-  investigated.)
-- **Phone app (Bluetooth):** the mesh runs on MeshCore's official companion engine, so the MeshCore app connects
-  to it like any companion radio. Keyboard and app work at the same time and share contacts, channels and radio
-  settings.
-- **Power:** screen dims and turns off when idle, CPU slows down while it's off.
+- **Setup without a phone:** region → name → time zone → on air. Nothing is sent before a region is chosen.
+- **Messages:** Public, `#hashtag` and private channels, direct messages with delivery marks (`[..]` `[ok]`
+  `[x]`) and retries, `@[name]` replies, unread counts, beep.
+- **Contacts and repeaters:** auto-added from adverts, favourites, share, filter by typing, repeater discovery
+  with SNR both ways. Lists sort by latest activity.
+- **Phone app over Bluetooth:** same contacts, channels and radio settings as the keyboard; both work at once.
+- **Radio and power:** region presets (868–923 MHz) or manual settings, airtime and noise floor, screen dims and
+  sleeps when idle.
 
 ## Hardware
 
-- [M5Stack Cardputer-Adv](https://docs.m5stack.com/en/core/Cardputer-Adv) (ESP32-S3, 8 MB flash)
-- [Cap LoRa-1262](https://docs.m5stack.com/en/cap/Cap_LoRa-1262) (SX1262 + GPS). **868–923 MHz only**, so only
-  presets in that band are offered (e.g. USA, EU/UK Narrow, Australia, NZ; no 433 MHz).
-
-Make sure the antenna is attached before you finish onboarding.
+[Cardputer-Adv](https://docs.m5stack.com/en/core/Cardputer-Adv) +
+[Cap LoRa-1262](https://docs.m5stack.com/en/cap/Cap_LoRa-1262) (868–923 MHz only, so no 433 MHz presets).
+Attach the antenna before you finish setup.
 
 ## Install
 
-Every release is one file, `meshcore-cardputer-vX.Y.Z.bin`, flashed at offset `0x0`. Pick any way:
-
-- **Web installer** (easiest): open https://zbruceli.github.io/meshcore_cardputer/ in Chrome or Edge, plug in
-  the Cardputer and press Install.
-- **M5Burner** / **Launcher**: find "MeshCore Cardputer" in the Cardputer firmware list.
-- **MeshCore web flasher**: https://flasher.meshcore.io → Custom Firmware → pick the `.bin` from
+- **Web installer** (easiest): https://zbruceli.github.io/meshcore_cardputer/ in Chrome or Edge.
+- **MeshCore web flasher**: https://flasher.meshcore.io → Custom Firmware → the `.bin` from
   [Releases](https://github.com/zbruceli/meshcore_cardputer/releases).
 - **esptool**: `esptool.py --chip esp32s3 write_flash 0x0 meshcore-cardputer-vX.Y.Z.bin`
 
-Updating keeps your identity, contacts, channels and messages unless you erase the flash. After flashing,
-switch the Cardputer off and on (without holding G0). If the computer doesn't see it, hold G0 while switching
-it on to enter download mode.
-
-## Build from source
-
-Needs [PlatformIO](https://platformio.org/) (CLI or the VS Code extension).
-
-```bash
-git clone https://github.com/zbruceli/meshcore_cardputer.git
-cd meshcore_cardputer
-pio run -t upload       # build and flash over USB-C
-pio device monitor      # optional: serial log at 115200
-```
-
-If the screen stays dark after flashing, the board is still in download mode: switch it off and on without
-holding G0.
+Updates keep your identity, contacts and messages unless you erase. Afterwards switch the Cardputer off and on.
+If the computer doesn't see it: power switch **off**, hold **G0** while plugging in USB, release after 2–3 s.
 
 ## Using it
 
-Tabs: **1 MSG** (inbox) · **2 CON** (contacts) · **3 RPT** (repeaters) · **4 RAD** (radio) · **5 SET** (settings).
-The bottom line of every screen shows the keys you can use there.
-
 | Key | Action |
 |---|---|
-| `Tab`, `1`–`5` | Switch tabs (`Fn`+digit while typing a message) |
-| `;` `.` `,` `/` | Up, down, left, right (hold `Fn` while typing) |
-| `Enter` | Open / select / send |
-| `` ` `` | Back |
-| `Del` | Delete a character |
-| G0 button | Send a flood advert (announce yourself) |
+| `Tab`, `1`–`5` | Switch tabs (`Fn`+digit while typing) |
+| `;` `.` `,` `/` | Up, down, left, right (`Fn` while typing) |
+| `Enter` / `` ` `` / `Del` | Select or send / back / delete |
+| G0 button | Send an advert (announce yourself) |
 
-Per screen:
+- **Chat:** just type; `Enter` sends. `Fn+R` in a channel starts a reply to the latest sender.
+- **1 MSG:** `A` add a channel (`#name`, or a name then its key), `X` twice to leave or delete.
+- **2 CON:** type to filter. In a contact: `Enter` message, `F` favourite, `R` reset path, `S` share, `X` delete.
+- **3 RPT:** `D` asks nearby repeaters to reply (60 s).  **4 RAD:** `Enter` flood advert, `Z` zero-hop advert.
+- **5 SET:** `,` `/` change, `Enter` edit. Factory reset needs `Enter` twice.
 
-- **In a chat:** just type; the compose line wraps up to 3 rows. `Enter` sends. In a channel, `Fn+R` starts your
-  message with `@[name]` for the latest sender (press again for earlier senders), the apps' mention format.
-- **1 MSG:** `A` add a channel: type `#name` for a hashtag channel, or a name and then the key (base64 or hex)
-  for a private one. `X` twice leaves a channel or deletes a DM thread.
-- **2 CON:** type letters to filter. `Enter` opens a contact (`+` entries are added first). In a contact:
-  `Enter` message, `F` favourite, `R` reset path, `S` share, `X` twice to delete.
-- **3 RPT:** `D` asks nearby repeaters to reply for 60 s. Replies show SNR heard by you / by them. Other
-  repeaters show the SNR of the last packet they relayed to you (`-7dB 3m`), or hops and age if not heard yet.
-- **4 RAD:** `Enter` sends a flood advert, `Z` a zero-hop advert.
-- **5 SET:** `,` `/` change a value, `Enter` edits text fields. Factory reset needs `Enter` twice.
+**Phone app:** in the MeshCore app, connect to `MeshCore-<your name>` and enter the **App PIN** from 5 SET (new
+each boot). Messages you send from one side don't show in the other's history; incoming ones show on both.
 
-### Using it with the MeshCore phone app
+Tips: press G0 once after setup so others can add you. A channel message stuck at `[sent]` wasn't heard
+re-sent by any repeater. Change the time zone in SET when daylight saving changes.
 
-1. On the Cardputer, **5 SET → Bluetooth** must be `on` (default). **App PIN** shows a new 6-digit PIN each boot
-   (or the PIN set from the app).
-2. In the MeshCore app, connect to **`MeshCore-<your name>`** and enter that PIN. **App PIN** then shows `connected`.
-3. The app sees the same contacts, channels and radio settings; messages that arrive while it's away are queued for it.
+## Build from source
 
-Messages sent from the app don't appear in the Cardputer's chat history, and messages sent from the keyboard don't
-appear in the app (incoming messages show on both). A name change reaches the Bluetooth name after a reboot.
+```bash
+git clone https://github.com/zbruceli/meshcore_cardputer.git && cd meshcore_cardputer
+pio run -t upload        # PlatformIO; then power-cycle the Cardputer
+```
 
-Status bar: screen title, unread count, signal of the last packet, battery %, clock (`--:--` until set).
+Docs: [PRD.md](PRD.md) (scope) · [roadmap_plan.md](roadmap_plan.md) (status) · [CLAUDE.md](CLAUDE.md) (code,
+hardware, rules). Screenshots: `python3 scripts/render_screens.py`.
 
-Tips:
-- Others only see you as a contact after they hear your advert: press G0 once after setup.
-- A DM shows `[..]` while sending, `[ok]` when acknowledged, `[x]` if it failed.
-- Channel messages have no acknowledgement: yours show `[sent]`, then `[heard N]` once repeaters are heard
-  re-broadcasting it (like the apps' "heard N repeats"). `[heard 0]` for a long time means it may not have left
-  your area.
-- Time zone is a fixed UTC offset: change it in SET when daylight saving starts or ends.
-
-## Project docs
-
-- [PRD.md](PRD.md): requirements and scope
-- [roadmap_plan.md](roadmap_plan.md): status and next phases
-- [CLAUDE.md](CLAUDE.md): code layout, hardware facts, working rules
-
-## Credits
-
-- [MeshCore](https://github.com/meshcore-dev/MeshCore): protocol, crypto, routing and radio drivers
-- [MeshCore-Cardputer-ADV](https://github.com/Stachugit/MeshCore-Cardputer-ADV): prior port, used for pins and
-  hardware init
-- [M5Cardputer](https://github.com/m5stack/M5Cardputer) / M5GFX: display and keyboard
-
-## License
-
-[MIT](LICENSE)
+Built on [MeshCore](https://github.com/meshcore-dev/MeshCore) and [M5Cardputer](https://github.com/m5stack/M5Cardputer);
+pins from [MeshCore-Cardputer-ADV](https://github.com/Stachugit/MeshCore-Cardputer-ADV). License: [MIT](LICENSE).
