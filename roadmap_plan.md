@@ -35,6 +35,14 @@ no TX before) · ✅ Public send/receive · ✅ inbox, chat, contacts, radio, se
 - 🟡 Discovery shows the same repeaters as the phone app
 - ✅ Settings survive a reboot
 
+## Phone app over Bluetooth ✅ (v0.3.0)
+
+- ✅ Mesh engine replaced by MeshCore's official companion engine (`MyMesh` + `DataStore`, unmodified); our UI is
+  its listener (`ChatClient`). Phone app pairs over BLE with a per-boot PIN; Bluetooth on/off in SET
+- ✅ One-time migration of name, radio settings, auto-add, contacts and channels from the v0.2 files
+- ✅ On device: app connects, sees the same contacts/channels, sends and receives; keyboard sends while connected
+- Heap with Bluetooth on: ~104 KB free (was ~212 KB)
+
 ## Phase 2 — "all-day battery & power user" ⬜
 
 1. Light sleep while the screen is off; wake on LoRa DIO1 and keyboard interrupt (find the TCA8418 INT pin).
@@ -50,7 +58,6 @@ no TX before) · ✅ Public send/receive · ✅ inbox, chat, contacts, radio, se
 
 - Room server login + post/read.
 - QR code to share own contact (`meshcore://`, MeshCore `docs/qr_codes.md`).
-- Optional BLE companion mode for users who also want a phone.
 - SD card message export; accent colour choices.
 
 ## Risks & open questions

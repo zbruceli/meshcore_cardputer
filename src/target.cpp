@@ -8,7 +8,26 @@ CardputerBoard board;
 // As the sosprz fork: default SPIClass (HSPI = SPI3, shared with the display) at SPISettings() = 1 MHz
 static SPIClass spi;
 CustomSX1262 radio = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY, spi, SPISettings());
-CustomSX1262Wrapper radio_driver(radio, board);
+CardputerRadio radio_driver(radio, board);
+
+void CardputerRadio::setParams(float freq, float bw, uint8_t sf, uint8_t cr) {
+  CustomSX1262Wrapper::setParams(freq, bw, sf, cr);
+  // MeshCore 1.16+ uses a 32-symbol preamble at SF<=8; repeaters on 1.15 and older use 16. Here the v1.15
+  // companion firmware heard far more of the local mesh, so match the older length.
+  radio.setPreambleLength(16);
+}
+
+int CardputerRadio::recvRaw(uint8_t* bytes, int sz) {
+  int len = CustomSX1262Wrapper::recvRaw(bytes, sz);
+  if (len > 0) onRadioRx(bytes, len, getLastSNR());
+  return len;
+}
+
+bool CardputerRadio::startSendRaw(const uint8_t* bytes, int len) {
+  bool ok = CustomSX1262Wrapper::startSendRaw(bytes, len);
+  if (ok) onRadioTx(bytes, len);
+  return ok;
+}
 
 ESP32RTCClock fallback_clock;
 AutoDiscoverRTCClock rtc_clock(fallback_clock);

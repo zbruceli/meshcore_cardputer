@@ -16,9 +16,21 @@ public:
   uint8_t battPercent();
 };
 
+// MeshCore's SX1262 wrapper, plus the 16-symbol preamble and hooks so the device UI sees every packet in and out
+// (the official companion engine only forwards raw packets to the phone app).
+class CardputerRadio : public CustomSX1262Wrapper {
+public:
+  CardputerRadio(CustomSX1262& radio, mesh::MainBoard& board) : CustomSX1262Wrapper(radio, board) { }
+  void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override;
+  int recvRaw(uint8_t* bytes, int sz) override;
+  bool startSendRaw(const uint8_t* bytes, int len) override;
+};
+void onRadioRx(const uint8_t* raw, int len, float snr);   // implemented by the chat client
+void onRadioTx(const uint8_t* raw, int len);
+
 extern CardputerBoard board;
 extern CustomSX1262 radio;
-extern CustomSX1262Wrapper radio_driver;
+extern CardputerRadio radio_driver;
 extern AutoDiscoverRTCClock rtc_clock;
 extern SensorManager sensors;
 

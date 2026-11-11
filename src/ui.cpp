@@ -1,6 +1,6 @@
 #include "ui.h"
 #include "target.h"
-#include "chat_mesh.h"
+#include "chat_client.h"
 
 const uint8_t BRIGHTNESS_LEVELS[4] = { 32, 80, 160, 255 };
 const uint16_t SCREEN_OFF_SECS[6] = { 15, 30, 60, 120, 300, 0 };
@@ -53,7 +53,7 @@ void drawStatus(const char* title) {
   canvas.drawFastVLine(192, 3, 10, C_BG);
 
   canvas.setTextColor(C_BG);
-  if (the_mesh.clockSynced()) fmtTime(s, the_mesh.now()); else strcpy(s, "--:--");
+  if (client.clockSynced()) fmtTime(s, client.now()); else strcpy(s, "--:--");
   canvas.drawString(s, 197, 0);
 }
 
@@ -136,7 +136,7 @@ void fmtTime(char* dest, uint32_t ts) {
 }
 
 void fmtAge(char* dest, uint32_t ts) {
-  uint32_t now = the_mesh.now();
+  uint32_t now = client.now();
   uint32_t secs = now > ts ? now - ts : 0;
   if (ts == 0) strcpy(dest, "-");
   else if (secs < 60) strcpy(dest, "now");
@@ -272,7 +272,7 @@ void uiLoop() {
 
   if (M5Cardputer.BtnA.wasPressed() && prefs.onboarded) {   // G0
     wake();
-    toast(the_mesh.sendAdvert(true) ? "Advert sent (flood)" : "Advert failed");
+    toast(client.sendAdvert(true) ? "Advert sent (flood)" : "Advert failed");
   }
 
   if (msg_added != seen_added) {
@@ -282,7 +282,7 @@ void uiLoop() {
       if (prefs.beep) M5Cardputer.Speaker.tone(2800, 60);
       if (!screenShowsConv(m->conv)) {
         char name[32];
-        ContactInfo* c = m->conv[0] == CONV_DM ? the_mesh.contactByConv(m->conv) : NULL;
+        ContactInfo* c = m->conv[0] == CONV_DM ? client.contactByConv(m->conv) : NULL;
         if (c) snprintf(name, sizeof(name), "%s: ", c->name); else name[0] = 0;
         char t2[COLS * 2];
         snprintf(t2, sizeof(t2), "%s%s", name, m->text);

@@ -6,7 +6,8 @@ What we are building and why. Status and sequencing live in `roadmap_plan.md`; h
 ## 1. Summary
 
 Standalone MeshCore chat client firmware for the **M5Stack Cardputer-Adv + Cap LoRa-1262**. The built-in
-240×135 screen and keyboard replace the phone app: no BLE pairing, no companion app. A pocket pager for the mesh.
+240×135 screen and keyboard work without a phone (a pocket pager for the mesh); the official MeshCore phone app can
+also pair with it over Bluetooth.
 
 ## 2. Goals / non-goals
 
@@ -19,7 +20,6 @@ Standalone MeshCore chat client firmware for the **M5Stack Cardputer-Adv + Cap L
 - Fast: boot to UI in < 3 s, keypress to redraw < 50 ms.
 
 **Non-goals (for now)**
-- BLE/USB companion protocol (phone app support) — possible late phase, off by default.
 - Maps, images, OTA, WiFi. Acting as a repeater or room server. Other Cardputers or LoRa modules.
 
 ## 3. Users & scenarios
@@ -91,15 +91,16 @@ Priority: **M** = MVP, **P1** = Phase 1, **P2** = Phase 2.
 
 ## 5. Protocol & interoperability
 
-- MeshCore library (`meshcore-dev/MeshCore`, pinned commit). `ChatMesh` subclasses `BaseChatMesh`; behaviour
-  copied from `examples/companion_radio` (ACK/retry timeouts, discovery, advert blobs for sharing).
-- Not implemented: the companion serial/BLE frame protocol.
+- MeshCore library (`meshcore-dev/MeshCore`, pinned commit). The mesh engine is MeshCore's official companion
+  firmware engine (`examples/companion_radio`: `MyMesh`, `DataStore`), compiled unmodified, which also speaks the
+  companion protocol to the phone app over BLE (`SerialBLEInterface`). The device UI is its listener (`ChatClient`).
 - Packet types: ADVERT, TXT_MSG, ACK, GRP_TXT, PATH, CONTROL (discovery). Later: REQ/RESPONSE/ANON_REQ.
 
 ## 6. Constraints
 
 - No PSRAM: fixed-size arrays only; ≥ 60 KB free heap with contacts loaded.
-- Persistence on SPIFFS: identity, prefs, contacts, channels, messages, advert blobs.
+- Persistence on SPIFFS: the engine's files (identity, `/prefs.json`, `/contacts3`, `/channels2`, advert blobs) plus
+  the UI's prefs and message log.
 
 ## 7. Success metrics
 
@@ -116,3 +117,10 @@ Priority: **M** = MVP, **P1** = Phase 1, **P2** = Phase 2.
 - Prior Cardputer port (pins, init; needs a phone for setup): https://github.com/Stachugit/MeshCore-Cardputer-ADV
 - Onboarding flow inspiration: https://bayme.sh/docs/getting-started/
 - Cap LoRa-1262: https://docs.m5stack.com/en/cap/Cap_LoRa-1262
+
+## 9. Phone app over Bluetooth (added after Phase 1)
+
+- The official MeshCore app pairs with the Cardputer as with any companion radio (name `MeshCore-<name>`, 6-digit
+  PIN shown in Settings, random each boot unless set from the app). Bluetooth can be turned off in Settings.
+- Keyboard and app work at the same time on one shared set of contacts, channels and radio settings (`NodePrefs`).
+- Limits: messages sent from one side don't appear in the other's history; incoming messages appear on both.

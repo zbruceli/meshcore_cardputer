@@ -1,8 +1,8 @@
 # MeshCore Cardputer
 
 A standalone [MeshCore](https://github.com/meshcore-dev/MeshCore) chat client for the
-**M5Stack Cardputer-Adv** with the **Cap LoRa-1262** module. Its own screen and keyboard replace the phone app,
-like a pocket pager for the mesh: no Bluetooth pairing, no companion app.
+**M5Stack Cardputer-Adv** with the **Cap LoRa-1262** module. Its own screen and keyboard work without a phone, like a
+pocket pager for the mesh, and it can also pair with the **official MeshCore phone app** over Bluetooth.
 
 Amber-on-black, pager / ham-rig style UI on the 240×135 display. Built on the official MeshCore library, so it
 talks to MeshCore phone apps, companion radios, Ripple devices and repeaters.
@@ -24,6 +24,9 @@ talks to MeshCore phone apps, companion radios, Ripple devices and repeaters.
   timeout, beep, time zone, clock.
 - **Clock:** learned from the mesh, or set by hand. (The Cap's GPS is switched off for now while a radio issue is
   investigated.)
+- **Phone app (Bluetooth):** the mesh runs on MeshCore's official companion engine, so the MeshCore app connects
+  to it like any companion radio. Keyboard and app work at the same time and share contacts, channels and radio
+  settings.
 - **Power:** screen dims and turns off when idle, CPU slows down while it's off.
 
 ## Hardware
@@ -89,6 +92,16 @@ Per screen:
   repeaters show the SNR of the last packet they relayed to you (`-7dB 3m`), or hops and age if not heard yet.
 - **4 RAD:** `Enter` sends a flood advert, `Z` a zero-hop advert.
 - **5 SET:** `,` `/` change a value, `Enter` edits text fields. Factory reset needs `Enter` twice.
+
+### Using it with the MeshCore phone app
+
+1. On the Cardputer, **5 SET → Bluetooth** must be `on` (default). **App PIN** shows a new 6-digit PIN each boot
+   (or the PIN set from the app).
+2. In the MeshCore app, connect to **`MeshCore-<your name>`** and enter that PIN. **App PIN** then shows `connected`.
+3. The app sees the same contacts, channels and radio settings; messages that arrive while it's away are queued for it.
+
+Messages sent from the app don't appear in the Cardputer's chat history, and messages sent from the keyboard don't
+appear in the app (incoming messages show on both). A name change reaches the Bluetooth name after a reboot.
 
 Status bar: screen title, unread count, signal of the last packet, battery %, clock (`--:--` until set).
 

@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Standalone MeshCore chat client firmware for **M5Stack Cardputer-Adv + Cap LoRa-1262**. Screen + keyboard only,
-no phone. `README.md` = user docs, `PRD.md` = what/why, `roadmap_plan.md` = status and next phases.
+no phone needed (the official MeshCore app can also pair over BLE). `README.md` = user docs, `PRD.md` = what/why, `roadmap_plan.md` = status and next phases.
 
 ## Principles
 
@@ -19,7 +19,15 @@ no phone. `README.md` = user docs, `PRD.md` = what/why, `roadmap_plan.md` = stat
 - `meshcore-dev/MeshCore` pinned by commit in `lib_deps`. Its bundled ed25519 comes in through the `lib/ed25519`
   shim + an `-I` flag. Don't include MeshCore's `base64.hpp` (non-inline definitions, already linked) — use mbedtls.
 - `m5stack/M5Cardputer` (M5GFX + keyboard). Everything is drawn into one full-screen `M5Canvas` sprite.
-- SPIFFS: `/identity`, `/prefs`, `/contacts`, `/channels`, `/msgs`, `/bl/<key>` (raw adverts, for sharing).
+- The mesh engine is MeshCore's official companion engine: `examples/companion_radio/MyMesh.cpp` + `DataStore.cpp`,
+  compiled unmodified from the pinned library via `build_src_filter` (don't copy or patch them). `the_mesh` must be
+  exactly `MyMesh` (its code refers to `extern MyMesh the_mesh`), so the UI hooks in through `MyMesh::Listener`
+  (`ChatClient`) and our radio wrapper subclass (`CardputerRadio`: every raw packet in/out, 16-symbol preamble).
+- Phone app over BLE (`SerialBLEInterface` + `MultiSerialInterface`), wired as in companion_radio's `main.cpp`.
+  BLE costs ~100 KB heap (~104 KB free after boot).
+- SPIFFS: engine files `/identity`, `/prefs.json` (NodePrefs: name, radio, auto-add, BLE PIN; shared with the app),
+  `/contacts3`, `/channels2`, `/bl/<key>`; UI files `/prefs` (UI settings, onboarded, region label), `/msgs`.
+  The pre-v0.3 `/contacts`, `/channels` and `/prefs` radio fields are only read once to migrate.
 
 ## Layout
 
@@ -28,8 +36,8 @@ platformio.ini       build flags carry all pins and radio defaults
 src/main.cpp         setup/loop: board, radio, mesh (only after onboarding), GPS clock, store, UI
 src/target.*         hardware glue (name required by MeshCore): board init, Cap RF switch, radio, battery, GPS time
 src/presets.h        region presets (868–923 MHz only)
-src/chat_mesh.*      ChatMesh : BaseChatMesh — messages, DM retries, channels, discovery, clock votes
-src/store.*          prefs, contacts, channels, message log + lazy saves
+src/chat_client.*    ChatClient : MyMesh::Listener — message log, DM retries, channels, discovery, clock votes
+src/store.*          UI prefs, message log + lazy saves; reads pre-v0.3 contact/channel files to migrate
 src/ui.*             primitives (status/hint bars, rows, lists, input, toast), key reading, display power
 src/ui_screens.cpp   per-screen draw()/key() + dispatch
 ```

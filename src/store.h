@@ -1,5 +1,6 @@
 #pragma once
-// Persistent state: prefs, contacts, message log. Flash FS = SPIFFS (same as MeshCore's ESP32 examples).
+// Persistent state of the device UI: its prefs and the message log. Contacts, channels and node settings belong to
+// MeshCore's companion engine (DataStore: /contacts3, /channels2, /prefs.json). Flash FS = SPIFFS.
 
 #include <Arduino.h>
 #include <helpers/BaseChatMesh.h>
@@ -10,7 +11,8 @@
 struct Prefs {
   uint8_t version;
   uint8_t onboarded;        // 0 = never transmit, show onboarding
-  uint8_t region;           // index into PRESETS, or REGION_CUSTOM
+  uint8_t region;           // index into PRESETS, or REGION_CUSTOM (label only; values are in NodePrefs)
+  // name and radio settings live in NodePrefs (shared with the app) since v0.3; these are only read to migrate
   uint8_t path_hash_size;   // 1..3
   char    name[32];
   float   freq, bw;
@@ -22,20 +24,19 @@ struct Prefs {
   int8_t  tz_hours;
   uint8_t reserved;         // v1 files end here (this byte was struct padding, so it may hold 0)
   // fields below were added after v1: older (shorter) files simply keep the defaults
-  uint8_t auto_add;         // bit (1 << ADV_TYPE_*) set = add that node type to contacts when its advert is heard
-  uint8_t overwrite;        // contacts full: replace the oldest non-favourite
+  uint8_t auto_add;         // (migration only) bit (1 << ADV_TYPE_*) = auto-add that node type
+  uint8_t overwrite;        // (migration only) contacts full: replace the oldest non-favourite
+  uint8_t ble_off;          // 1 = Bluetooth (phone app link) disabled
 };
-#define ADD_CHAT_RPT  ((1 << ADV_TYPE_CHAT) | (1 << ADV_TYPE_REPEATER))   // "Auto Add Selected", as MeshCore suggests
 
 extern Prefs prefs;
 void prefsDefaults();
 void prefsLoad();
 void prefsSave();
 
-void contactsLoad(BaseChatMesh& mesh);
-void contactsSave(BaseChatMesh& mesh);
-void channelsLoad(BaseChatMesh& mesh);   // seeds Public on first boot
-void channelsSave(BaseChatMesh& mesh);
+// pre-v0.3 contact / channel files, read once to migrate into the companion engine; false if absent
+bool contactsLoad(BaseChatMesh& mesh);
+bool channelsLoad(BaseChatMesh& mesh);
 
 // ---- message log (one list for all conversations; when full, the busiest conversation loses its oldest) ----
 
@@ -67,5 +68,4 @@ void msgsChanged();         // schedule a lazy save
 void msgsLoad();
 
 void storeLoop();           // performs lazy saves
-void storeMarkContactsDirty();
 void storeWipe();           // factory reset

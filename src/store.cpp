@@ -1,6 +1,5 @@
 #include <SPIFFS.h>
 #include "store.h"
-#include "chat_mesh.h"
 
 #define LAZY_SAVE_MILLIS  5000
 
@@ -10,7 +9,7 @@ uint32_t msg_added = 0;
 
 static Msg msgs[MSG_LOG_SIZE];   // oldest first
 static int msg_count = 0;
-static uint32_t msgs_save_at = 0, contacts_save_at = 0;
+static uint32_t msgs_save_at = 0;
 
 static bool readFile(const char* path, void* dest, size_t len) {
   File f = SPIFFS.open(path, "r");
@@ -42,7 +41,7 @@ void prefsDefaults() {
   prefs.brightness = 2;
   prefs.screen_off = 1;
   prefs.beep = 1;
-  prefs.auto_add = ADD_CHAT_RPT;
+  prefs.auto_add = (1 << ADV_TYPE_CHAT) | (1 << ADV_TYPE_REPEATER);
   prefs.overwrite = 1;
 }
 
@@ -68,9 +67,9 @@ struct ContactRec {   // on-flash form of ContactInfo (minus the cached shared s
   int32_t  gps_lat, gps_lon;
 };
 
-void contactsLoad(BaseChatMesh& mesh) {
+bool contactsLoad(BaseChatMesh& mesh) {
   File f = SPIFFS.open("/contacts", "r");
-  if (!f) return;
+  if (!f) return false;
   ContactRec r;
   while (f.read((uint8_t*)&r, sizeof(r)) == sizeof(r)) {
     ContactInfo c;
@@ -88,49 +87,17 @@ void contactsLoad(BaseChatMesh& mesh) {
     if (!mesh.addContact(c)) break;
   }
   f.close();
-}
-
-void contactsSave(BaseChatMesh& mesh) {
-  File f = SPIFFS.open("/contacts", "w", true);
-  if (!f) return;
-  ContactsIterator iter = mesh.startContactsIterator();
-  ContactInfo c;
-  ContactRec r;
-  while (iter.hasNext(&mesh, c)) {
-    memcpy(r.pub_key, c.id.pub_key, PUB_KEY_SIZE);
-    memcpy(r.name, c.name, sizeof(r.name));
-    r.type = c.type;
-    r.flags = c.flags;
-    r.out_path_len = c.out_path_len;
-    memcpy(r.out_path, c.out_path, sizeof(r.out_path));
-    r.last_advert_timestamp = c.last_advert_timestamp;
-    r.lastmod = c.lastmod;
-    r.gps_lat = c.gps_lat;
-    r.gps_lon = c.gps_lon;
-    f.write((uint8_t*)&r, sizeof(r));
-  }
-  f.close();
+  return true;
 }
 
 // ---- channels ----
 
-void channelsLoad(BaseChatMesh& mesh) {
+bool channelsLoad(BaseChatMesh& mesh) {
   ChannelDetails chs[MAX_GROUP_CHANNELS];
-  if (!readFile("/channels", chs, sizeof(chs))) {
-    mesh.addChannel("Public", PUBLIC_GROUP_PSK);
-    channelsSave(mesh);
-    return;
-  }
+  if (!readFile("/channels", chs, sizeof(chs))) return false;
   for (int i = 0; i < MAX_GROUP_CHANNELS; i++) mesh.setChannel(i, chs[i]);
+  return true;
 }
-
-void channelsSave(BaseChatMesh& mesh) {
-  ChannelDetails chs[MAX_GROUP_CHANNELS];
-  for (int i = 0; i < MAX_GROUP_CHANNELS; i++) mesh.getChannel(i, chs[i]);
-  writeFile("/channels", chs, sizeof(chs));
-}
-
-void storeMarkContactsDirty() { contacts_save_at = millis() + LAZY_SAVE_MILLIS; }
 
 // ---- message log ----
 
@@ -197,10 +164,6 @@ void storeLoop() {
   if (msgs_save_at && (int32_t)(now - msgs_save_at) >= 0) {
     msgs_save_at = 0;
     msgsSave();
-  }
-  if (contacts_save_at && (int32_t)(now - contacts_save_at) >= 0) {
-    contacts_save_at = 0;
-    contactsSave(the_mesh);
   }
 }
 
