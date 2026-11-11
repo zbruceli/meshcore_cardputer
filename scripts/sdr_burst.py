@@ -3,7 +3,8 @@
 
 The dongle isn't calibrated: only compare runs taken with the same gain, position and antenna.
 
-Setup:   brew install librtlsdr && pip install pyrtlsdr numpy     (or: pip install "pyrtlsdr[lib]" numpy)
+Setup:   brew install librtlsdr && pip install "pyrtlsdr==0.2.93" numpy
+         (newer pyrtlsdr needs rtlsdr_set_dithering, which Homebrew's librtlsdr 2.0.x doesn't have)
 Check:   rtl_test -t
 Measure: python3 scripts/sdr_burst.py --label tdeck --gain 10 --csv bursts.csv     (Ctrl-C to stop)
          python3 scripts/sdr_burst.py --label cardputer-ours --gain 10 --csv bursts.csv
@@ -113,6 +114,8 @@ class BurstMeter:
 
 
 def chunks_from_sdr(a):
+    # ctypes doesn't search Homebrew's lib dirs on macOS
+    os.environ.setdefault("DYLD_FALLBACK_LIBRARY_PATH", "/opt/homebrew/lib:/usr/local/lib:/usr/lib")
     from rtlsdr import RtlSdr
     sdr = RtlSdr()
     sdr.sample_rate = a.rate
