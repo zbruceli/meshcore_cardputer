@@ -56,15 +56,6 @@ bool radio_init() {
   return true;
 }
 
-// Cap PI4IOE (0x43) registers for the serial log. P0 must stay output (0x03 bit0), high (0x05), not hi-Z (0x07); 0x0F = input levels
-void ioexDiag() {
-  m5::PI4IOE5V6408_Class io;
-  if (!io.begin()) { Serial.println("ioex: not found"); return; }
-  Serial.printf("ioex: dir 0x%02X out 0x%02X hiz 0x%02X pull 0x%02X/0x%02X in 0x%02X\n", io.readRegister8(0x03),
-                io.readRegister8(0x05), io.readRegister8(0x07), io.readRegister8(0x0B), io.readRegister8(0x0D),
-                io.readRegister8(0x0F));
-}
-
 // ---- GPS: parse NMEA RMC for date + time only ----
 
 void gpsBegin() {

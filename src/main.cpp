@@ -38,7 +38,6 @@ void loop() {
   if ((int32_t)(millis() - next_log) >= 0) {   // health line for `pio device monitor`
     next_log = millis() + 10000;
     if (radio_ok) the_mesh.logStatus();
-    ioexDiag();
   }
   rtc_clock.tick();
 

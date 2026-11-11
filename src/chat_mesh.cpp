@@ -99,12 +99,8 @@ void ChatMesh::logRx(mesh::Packet* packet, int len, float score) {
     }
   }
   if (!Serial) return;   // USB not connected: don't spend time printing
-  Serial.printf("RX %-8s %s hops %d len %d snr %.1f ferr %.0fHz", PKT_TYPES[packet->getPayloadType() & 0x0F],
-                packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len, packet->getSNR(),
-                radio.getFrequencyError());
-  if (packet->hasTransportCodes()) Serial.printf(" scope %04x", packet->transport_codes[0]);   // region-scoped flood
-  if (packet->getPayloadType() == PAYLOAD_TYPE_GRP_TXT) Serial.printf(" ch %02x", packet->payload[0]);   // channel hash
-  Serial.println();
+  Serial.printf("RX %-8s %s hops %d len %d snr %.1f\n", PKT_TYPES[packet->getPayloadType() & 0x0F],
+                packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len, packet->getSNR());
 }
 
 void ChatMesh::logTx(mesh::Packet* packet, int len) {
@@ -113,14 +109,8 @@ void ChatMesh::logTx(mesh::Packet* packet, int len) {
     echo_wait_tx = false;
   }
   if (!Serial) return;
-  static unsigned long air_before = 0;   // airtime of this send, from MeshCore's running total
-  Serial.printf("TX %-8s %s hops %d len %d airtime %lums\n", PKT_TYPES[packet->getPayloadType() & 0x0F],
-                packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len,
-                getTotalAirTime() - air_before);
-  air_before = getTotalAirTime();
-  uint16_t err = radio.getDeviceErrors();   // SX1262 OpError: bit 8 PA ramp, 6 PLL lock, 5 XOSC start, 0-4 calibration
-  if (err) Serial.printf("SX1262 device errors 0x%04x\n", err);
-  radio.clearDeviceErrors();
+  Serial.printf("TX %-8s %s hops %d len %d\n", PKT_TYPES[packet->getPayloadType() & 0x0F],
+                packet->isRouteFlood() ? "flood " : "direct", packet->getPathHashCount(), len);
 }
 
 void ChatMesh::logStatus() {
@@ -254,7 +244,6 @@ void ChatMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh::Pac
   m->sender_ts = timestamp;
   m->unread = 1;
   StrHelper::strncpy(m->text, text, sizeof(m->text));
-  if (Serial) Serial.printf("chan %02x decrypted, %d chars\n", channel.hash[0], (int)strlen(text));
 }
 
 // An ACK may belong to any attempt, and over many flood hops it can arrive after we've retried or given up.
