@@ -33,16 +33,21 @@ and repeaters.
 
 [Cardputer-Adv](https://docs.m5stack.com/en/core/Cardputer-Adv) +
 [Cap LoRa-1262](https://docs.m5stack.com/en/cap/Cap_LoRa-1262) (868–923 MHz only, so no 433 MHz presets).
-Attach the antenna before you finish setup.
+Not for the original Cardputer. Attach the antenna before you finish setup; without the Cap the device boots but
+shows `RADIO FAIL: check LoRa Cap`.
 
 ## Install
 
-- **Web installer** (easiest): https://zbruceli.github.io/meshcore_cardputer/ in Chrome or Edge.
+- **M5Burner**: search for *Bruce's MeshCore* (Cardputer, Network & Communication), or burn it from the browser
+  at https://burner.m5stack.com/U3W4DS.
+- **Web installer**: https://zbruceli.github.io/meshcore_cardputer/ in Chrome or Edge.
 - **MeshCore web flasher**: https://flasher.meshcore.io → Custom Firmware → the `.bin` from
   [Releases](https://github.com/zbruceli/meshcore_cardputer/releases).
 - **esptool**: `esptool.py --chip esp32s3 write_flash 0x0 meshcore-cardputer-vX.Y.Z.bin`
 
-Updates keep your identity, contacts and messages unless you erase. Afterwards switch the Cardputer off and on.
+All of them write a merged image at `0x0`, replacing whatever was on the device (including a launcher). Updates
+keep your identity, contacts and messages unless you erase. Afterwards switch the Cardputer off and on; the first
+boot after a fresh install takes about 25 s while storage is set up.
 If the computer doesn't see it: power switch **off**, hold **G0** while plugging in USB, release after 2–3 s.
 
 ## Using it

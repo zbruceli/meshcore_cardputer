@@ -13,6 +13,8 @@ Scope is in `PRD.md`, code and rules in `CLAUDE.md`.
 - **v0.3.0 — phone app over Bluetooth ✅:** MeshCore's official companion engine (`MyMesh` + `DataStore`,
   unmodified) runs the mesh; the device UI is its listener; one-time migration of v0.2 data. App and keyboard work
   at once on shared contacts, channels and settings. Lists sort by latest activity.
+- **v0.3.1 / v0.3.2 ✅:** boots without the Cap (`RADIO FAIL`), startup screen, pinned M5Unified/M5GFX.
+  Listed on [M5Burner](https://burner.m5stack.com/U3W4DS).
 
 Checks: ✅ DMs both ways with `[ok]` (T-Deck Plus) · ✅ app on the same device sends/receives on channels ·
 ✅ settings and data survive reboots · ✅ ~104 KB heap free with Bluetooth on · 🟡 discovery vs. the phone app's list.
@@ -26,7 +28,7 @@ Checks: ✅ DMs both ways with `[ok]` (T-Deck Plus) · ✅ app on the same devic
 
 ## Later (only if asked for)
 
-Repeater login and status, room servers, QR contact sharing, SD message export, colour themes, M5Burner listing.
+Repeater login and status, room servers, QR contact sharing, SD message export, colour themes.
 
 ## Risks
 
