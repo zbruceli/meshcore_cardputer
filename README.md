@@ -62,7 +62,8 @@ If the computer doesn't see it: power switch **off**, hold **G0** while plugging
 - **Chat:** just type; `Enter` sends. `Fn+R` in a channel starts a reply to the latest sender.
 - **1 MSG:** `A` add a channel (`#name`, or a name then its key), `X` twice to leave or delete.
 - **2 CON:** type to filter. In a contact: `Enter` message, `F` favourite, `R` reset path, `S` share, `X` delete.
-- **3 RPT:** `D` asks nearby repeaters to reply (60 s).  **4 RAD:** `Enter` flood advert, `Z` zero-hop advert.
+- **3 RPT:** `D` asks nearby repeaters to reply (60 s).
+- **4 RAD:** `Enter` flood advert, `Z` zero-hop advert.
 - **5 SET:** `,` `/` change, `Enter` edit. Factory reset needs `Enter` twice.
 
 **Phone app:** in the MeshCore app, connect to `MeshCore-<your name>` and enter the **App PIN** from 5 SET (new
