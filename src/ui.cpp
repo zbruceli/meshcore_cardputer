@@ -244,6 +244,17 @@ static void powerTick() {
 
 // ---------------------------------------------------------------- main loop
 
+void uiSplash() {
+  M5Cardputer.Display.setRotation(1);
+  M5Cardputer.Display.fillScreen(TFT_BLACK);
+  M5Cardputer.Display.setFont(&fonts::AsciiFont8x16);
+  M5Cardputer.Display.setTextColor(C_AMBER, TFT_BLACK);
+  M5Cardputer.Display.drawString("MeshCore Cardputer v" FW_VERSION, 8, 48);
+  M5Cardputer.Display.setTextColor(C_DIM, TFT_BLACK);
+  M5Cardputer.Display.drawString("Starting... first boot can", 8, 72);
+  M5Cardputer.Display.drawString("take up to a minute", 8, 88);
+}
+
 void uiBegin() {
   M5Cardputer.Display.setRotation(1);
   canvas.setColorDepth(16);

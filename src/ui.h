@@ -44,6 +44,7 @@ void screenDraw();
 void screenKey(const Key& k);
 bool screenShowsConv(const uint8_t conv[]);
 
+void uiSplash();   // right after board.begin(): something on screen while storage is set up
 void uiBegin();
 void applyBrightness();
 void uiLoop();

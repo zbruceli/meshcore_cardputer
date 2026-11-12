@@ -134,7 +134,18 @@ uint32_t gpsReadTime() {
   return found;
 }
 
+// Without a working radio (no Cap fitted) its noise can't be read: use the ESP32's hardware RNG instead.
+class HardwareRNG : public mesh::RNG {
+public:
+  void random(uint8_t* dest, size_t sz) override { esp_fill_random(dest, sz); }
+};
+
 mesh::LocalIdentity radio_new_identity() {
+  extern bool radio_ok;
+  if (!radio_ok) {
+    HardwareRNG rng;
+    return mesh::LocalIdentity(&rng);
+  }
   RadioNoiseListener rng(radio);
   return mesh::LocalIdentity(&rng);
 }
