@@ -19,11 +19,30 @@ static bool readFile(const char* path, void* dest, size_t len) {
   return ok;
 }
 
-static void writeFile(const char* path, const void* src, size_t len) {
-  File f = SPIFFS.open(path, "w", true);
-  if (!f) return;
-  f.write((const uint8_t*)src, len);
+// A reset, power loss or full flash during a save must never lose the previous file: write "<path>.tmp", check
+// it, then swap it in. SPIFFS can't rename onto an existing file, so the old one goes first; recoverFile() finishes
+// a swap that a reset interrupted.
+static bool writeFile(const char* path, const void* src, size_t len) {
+  char tmp[32];
+  snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+  File f = SPIFFS.open(tmp, "w", true);
+  if (!f) return false;
+  bool ok = f.write((const uint8_t*)src, len) == len;
   f.close();
+  if (!ok) {   // e.g. flash full: keep the old file
+    SPIFFS.remove(tmp);
+    return false;
+  }
+  SPIFFS.remove(path);
+  return SPIFFS.rename(tmp, path);
+}
+
+static void recoverFile(const char* path) {
+  char tmp[32];
+  snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+  if (!SPIFFS.exists(tmp)) return;
+  if (SPIFFS.exists(path)) SPIFFS.remove(tmp);   // stopped while writing the temp file: the old file is intact
+  else SPIFFS.rename(tmp, path);                  // stopped after removing the old file: the temp file is complete
 }
 
 // ---- prefs ----
@@ -47,6 +66,7 @@ void prefsDefaults() {
 
 void prefsLoad() {
   prefsDefaults();
+  recoverFile("/prefs");
   File f = SPIFFS.open("/prefs", "r");
   if (!f) return;
   f.read((uint8_t*)&prefs, sizeof(prefs));   // a shorter (older) file leaves the newer fields at their defaults
@@ -54,7 +74,9 @@ void prefsLoad() {
   if (prefs.version != PREFS_VERSION) prefsDefaults();
 }
 
-void prefsSave() { writeFile("/prefs", &prefs, sizeof(prefs)); }
+void prefsSave() {
+  if (!writeFile("/prefs", &prefs, sizeof(prefs))) Serial.println("prefs save failed");
+}
 
 // ---- contacts ----
 
@@ -141,6 +163,7 @@ void msgsDeleteConv(const uint8_t conv[]) {
 }
 
 void msgsLoad() {
+  recoverFile("/msgs");
   File f = SPIFFS.open("/msgs", "r");
   if (!f) return;
   while (msg_count < MSG_LOG_SIZE && f.read((uint8_t*)&msgs[msg_count], sizeof(Msg)) == sizeof(Msg)) {
@@ -151,10 +174,7 @@ void msgsLoad() {
 }
 
 static void msgsSave() {
-  File f = SPIFFS.open("/msgs", "w", true);
-  if (!f) return;
-  for (int i = 0; i < msg_count; i++) f.write((uint8_t*)msgAt(i), sizeof(Msg));
-  f.close();
+  if (!writeFile("/msgs", msgs, msg_count * sizeof(Msg))) Serial.println("msgs save failed");
 }
 
 // ---- housekeeping ----
