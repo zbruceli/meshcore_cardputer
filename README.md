@@ -28,6 +28,9 @@ and repeaters.
 - **Phone app over Bluetooth:** same contacts, channels and radio settings as the keyboard; both work at once.
 - **Radio and power:** region presets (868–923 MHz) or manual settings, airtime and noise floor, screen dims and
   sleeps when idle.
+- **Colour schemes:** amber (default), green phosphor, VFD cyan, red, blue LCD, classic LCD and paper.
+
+![Colour schemes](docs/screens/themes.png)
 
 ## Hardware
 
@@ -64,7 +67,8 @@ If the computer doesn't see it: power switch **off**, hold **G0** while plugging
 - **2 CON:** type to filter. In a contact: `Enter` message, `F` favourite, `R` reset path, `S` share, `X` delete.
 - **3 RPT:** `D` asks nearby repeaters to reply (60 s).
 - **4 RAD:** `Enter` flood advert, `Z` zero-hop advert.
-- **5 SET:** `,` `/` change, `Enter` edit. Factory reset needs `Enter` twice.
+- **5 SET:** `,` `/` change, `Enter` edit. **Colours** picks a scheme (see below). Factory reset needs `Enter`
+  twice.
 
 **Phone app:** in the MeshCore app, connect to `MeshCore-<your name>` and enter the **App PIN** from 5 SET (new
 each boot). Messages you send from one side don't show in the other's history; incoming ones show on both.

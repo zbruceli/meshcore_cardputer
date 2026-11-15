@@ -335,7 +335,7 @@ static void drawInbox() {
     if (c.unread) snprintf(right, sizeof(right), "*%d", c.unread);
     else if (c.last_ts) fmtAge(right, c.last_ts);
     else right[0] = 0;
-    if (armed && top + r == sel) drawRow(r, true, "X again to delete", NULL, C_RED);
+    if (armed && top + r == sel) drawRow(r, true, "X again to delete", NULL, C_ALERT);
     else drawRow(r, top + r == sel, name, right);
   }
   drawHints("ENT open  A add chan  X del");
@@ -427,8 +427,8 @@ static int buildChatLines(int need) {
       strcpy(st, STATUS[m->status]);
     }
     snprintf(hdr, sizeof(hdr), "%s %s%s", t, sender, st);
-    int k = wrap(hdr, msg_lines, 1, m->status == ST_FAILED ? C_RED : C_DIM);
-    k += wrap(body, &msg_lines[k], 11, C_AMBER);
+    int k = wrap(hdr, msg_lines, 1, m->status == ST_FAILED ? C_ALERT : C_DIM);
+    k += wrap(body, &msg_lines[k], 11, C_FG);
     while (k > 0 && n < MAX_LINES) lines[n++] = msg_lines[--k];
   }
   return n;
@@ -602,7 +602,7 @@ static void fmtHops(char* dest, const ContactInfo& c) {
 
 static void drawContactRow(int r, const ContactItem& it) {
   char left[36], right[16], hops[4], age[8];
-  uint16_t color = C_AMBER;
+  uint16_t color = C_FG;
   if (it.idx & IT_DISC) {
     const Discovered& d = client.discovered[it.idx & 0xFF];
     ContactInfo* c = the_mesh.lookupContactByPubKey(d.pub_key, PUB_KEY_SIZE);
@@ -741,7 +741,7 @@ static void drawContact() {
     drawRow(4, false, "Heard", s);
   }
   if (armed) {
-    drawRow(5, true, "X again to delete", NULL, C_RED);
+    drawRow(5, true, "X again to delete", NULL, C_ALERT);
   } else if (c->gps_lat || c->gps_lon) {
     snprintf(s, sizeof(s), "%.4f,%.4f", c->gps_lat / 1e6, c->gps_lon / 1e6);
     drawRow(5, false, "GPS", s);
@@ -787,17 +787,17 @@ static void drawRadio() {
   char s[COLS + 1];
   drawStatus("4 RAD");
   if (!radio_ok) {
-    canvas.setTextColor(C_RED);
+    canvas.setTextColor(C_ALERT);
     canvas.drawString("NO RADIO", 0, BODY_Y + 8, &fonts::Font4);
-    drawRow(3, false, "Check the Cap LoRa-1262", NULL, C_RED);
-    drawRow(4, false, "is seated, then reboot.", NULL, C_RED);
+    drawRow(3, false, "Check the Cap LoRa-1262", NULL, C_ALERT);
+    drawRow(4, false, "is seated, then reboot.", NULL, C_ALERT);
     drawHints("");
     return;
   }
   // ham-rig style frequency readout
   NodePrefs& np = client.node();
   snprintf(s, sizeof(s), "%.3f", np.freq);
-  canvas.setTextColor(C_AMBER);
+  canvas.setTextColor(C_FG);
   int fx = max(0, SCR_W - 26 - (int)canvas.textWidth(s, &fonts::Font7));   // leave room for "MHz"
   canvas.drawString(s, fx, BODY_Y, &fonts::Font7);
   canvas.setFont(&fonts::AsciiFont8x16);
@@ -827,7 +827,7 @@ static void keyRadio(const Key& k) {
 // ================================================================ settings
 
 enum { SET_NAME, SET_REGION, SET_FREQ, SET_BW, SET_SF, SET_CR, SET_TX, SET_HASH, SET_AUTOADD, SET_OVERWRITE,
-       SET_BT, SET_PIN, SET_BRIGHT, SET_SCREEN, SET_BEEP, SET_TZ, SET_CLOCK, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
+       SET_BT, SET_PIN, SET_BRIGHT, SET_THEME, SET_SCREEN, SET_BEEP, SET_TZ, SET_CLOCK, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
 static const float BWS[] = { 7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500 };
 #define NUM_BWS (int)(sizeof(BWS) / sizeof(BWS[0]))
 static const char* ADD_LABELS[NUM_ADD_MODES] = { "chat+rpt", "all", "chat", "off" };   // ADD_* order
@@ -865,6 +865,7 @@ static void drawSettings() {
         else snprintf(v, sizeof(v), "%06u", (unsigned)the_mesh.getBLEPin());
         break;
       case SET_BRIGHT:  label = "Brightness"; snprintf(v, sizeof(v), "< %d/4 >", prefs.brightness + 1); break;
+      case SET_THEME:   label = "Colours"; snprintf(v, sizeof(v), "< %s >", theme->name); break;
       case SET_SCREEN:  label = "Screen off";
         if (SCREEN_OFF_SECS[prefs.screen_off] == 0) strcpy(v, "< never >");
         else snprintf(v, sizeof(v), "< %ds >", SCREEN_OFF_SECS[prefs.screen_off]);
@@ -881,7 +882,7 @@ static void drawSettings() {
       case SET_VERSION: label = "Firmware"; snprintf(v, sizeof(v), "v%s", FW_VERSION); break;
       case SET_RESET:   label = armed ? "ENT again to WIPE ALL" : "Factory reset"; break;
     }
-    drawRow(r, i == sel, label, v, i == SET_RESET && armed ? C_RED : C_AMBER);
+    drawRow(r, i == sel, label, v, i == SET_RESET && armed ? C_ALERT : C_FG);
   }
   drawHints("ENT edit   , / change");
 }
@@ -941,6 +942,7 @@ ui_prefs:   // the device's own settings
   switch (sel) {
     case SET_BT:     prefs.ble_off = !prefs.ble_off; bluetoothApply(); break;
     case SET_BRIGHT: prefs.brightness = (prefs.brightness + 4 + d) % 4; applyBrightness(); break;
+    case SET_THEME:  prefs.theme = (prefs.theme + NUM_THEMES + d) % NUM_THEMES; themeApply(); break;
     case SET_SCREEN: prefs.screen_off = (prefs.screen_off + 6 + d) % 6; break;
     case SET_BEEP:   prefs.beep = !prefs.beep; break;
     case SET_TZ:     prefs.tz_hours = constrain(prefs.tz_hours + d, -12, 14); break;

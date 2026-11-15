@@ -48,9 +48,15 @@ void bluetoothApply() {   // on only once onboarded (no app-driven TX before a r
 void setup() {
   Serial.begin(115200);
   board.begin();
+  // the splash uses the saved colour scheme; only the first boot (formatting, ~22 s) shows it before prefs exist
+  bool fs_ok = SPIFFS.begin(false);
+  if (fs_ok) prefsLoad();
+  themeApply();
   uiSplash();
-  SPIFFS.begin(true);   // formats the data partition on first boot (several seconds)
-  prefsLoad();
+  if (!fs_ok) {
+    SPIFFS.begin(true);   // formats the data partition
+    prefsLoad();
+  }
 
   radio_ok = radio_init();
   fast_rng.begin(radio_ok ? radio_driver.getRngSeed() : esp_random());

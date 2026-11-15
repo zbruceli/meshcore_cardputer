@@ -27,6 +27,7 @@ struct Prefs {
   uint8_t auto_add;         // (migration only) bit (1 << ADV_TYPE_*) = auto-add that node type
   uint8_t overwrite;        // (migration only) contacts full: replace the oldest non-favourite
   uint8_t ble_off;          // 1 = Bluetooth (phone app link) disabled
+  uint8_t theme;            // index into THEMES (colour scheme), 0 = amber
 };
 
 extern Prefs prefs;

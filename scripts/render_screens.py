@@ -3,6 +3,7 @@
 
 Mirrors the drawing rules in src/ui.cpp (240x135, 16 px status bar, six 16 px rows, hint bar) and uses the
 device's own 8x16 font from M5GFX. The big frequency digits are drawn as seven-segment glyphs, like Font7.
+Colours come from the THEMES table in src/ui.cpp; screens use the default (amber), themes.png shows every scheme.
 Usage: python3 scripts/render_screens.py   (after `pio run`, which downloads M5GFX)  ->  docs/screens/*.png
 """
 import os, re
@@ -14,7 +15,25 @@ OUT = os.path.join(ROOT, "docs/screens")
 SCALE = 2
 
 W, H, ROW_H, BODY_Y, HINT_Y, COLS = 240, 135, 16, 18, 119, 30
-BG, AMBER, DIM, RED = (0, 0, 0), (255, 150, 0), (123, 73, 0), (255, 48, 49)   # C_BG, C_AMBER, C_DIM, C_RED
+
+
+def rgb565(v):
+    v = int(v, 16)
+    r, g, b = v >> 11, (v >> 5) & 0x3F, v & 0x1F
+    return (r << 3 | r >> 2, g << 2 | g >> 4, b << 3 | b >> 2)
+
+
+THEMES = [(m[0], [rgb565(x) for x in m[1:]]) for m in re.findall(
+    r'\{\s*"([^"]+)",\s*0x(\w{4}),\s*0x(\w{4}),\s*0x(\w{4}),\s*0x(\w{4})\s*\}',
+    open(os.path.join(ROOT, "src/ui.cpp")).read())]
+
+
+def set_theme(i):   # C_BG, C_FG, C_DIM, C_ALERT
+    global BG, FG, DIM, ALERT
+    BG, FG, DIM, ALERT = THEMES[i][1]
+
+
+set_theme(0)
 
 src = open(FONT_H).read()
 FONT = [int(x, 16) for x in re.findall(r"0x[0-9A-Fa-f]{2}", src[src.index("{"):src.index("};")])]
@@ -35,7 +54,7 @@ class Screen:
             x += 8
 
     def status(self, title, unread=0, bars=3, batt=87, clock="14:32"):
-        self.d.rectangle([0, 0, W - 1, ROW_H - 1], fill=AMBER)
+        self.d.rectangle([0, 0, W - 1, ROW_H - 1], fill=FG)
         self.text(title[:12], 2, 0, BG)
         if unread:
             self.text("*%d" % unread, 100, 0, BG)
@@ -50,7 +69,8 @@ class Screen:
         self.d.line([192, 3, 192, 12], fill=BG)
         self.text(clock, 197, 0, BG)
 
-    def row(self, r, left, right=None, sel=False, color=AMBER):
+    def row(self, r, left, right=None, sel=False, color=None):
+        color = color or FG
         y = BODY_Y + r * ROW_H
         if sel:
             self.d.rectangle([0, y, W - 1, y + ROW_H - 1], fill=color)
@@ -66,9 +86,9 @@ class Screen:
 
     def compose(self, r, s):
         y = BODY_Y + r * ROW_H
-        self.text(">", 0, y, AMBER)
-        self.text(s, 8, y, AMBER)
-        self.d.rectangle([8 + len(s) * 8, y + 13, 8 + len(s) * 8 + 6, y + 14], fill=AMBER)
+        self.text(">", 0, y, FG)
+        self.text(s, 8, y, FG)
+        self.d.rectangle([8 + len(s) * 8, y + 13, 8 + len(s) * 8 + 6, y + 14], fill=FG)
 
     # seven-segment digits for the RAD frequency readout (Font7 is 48 px tall)
     SEGS = {"0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc", "5": "afgcd", "6": "afgedc",
@@ -119,16 +139,20 @@ for r, (name, right) in enumerate([("#bayarea", "*2"), ("@Alice", "*1"), ("Publi
 s.hints("ENT open  A add chan  X del")
 s.save("msg_inbox")
 
-s = Screen()   # channel chat
-s.status("#bayarea")
-s.row(0, "14:20 Kai", color=DIM)
-s.row(1, "Anyone hiking Mission Peak")
-s.row(2, "tonight?")
-s.row(3, "14:24 me [heard 3]", color=DIM)
-s.row(4, "@[Kai] count me in!")
-s.compose(5, "see you at the trailhea")
-s.hints("ENT send  Fn+R @  Fn;. scroll")
-s.save("chat")
+def chat():   # channel chat
+    s = Screen()
+    s.status("#bayarea")
+    s.row(0, "14:20 Kai", color=DIM)
+    s.row(1, "Anyone hiking Mission Peak")
+    s.row(2, "tonight?")
+    s.row(3, "14:24 me [heard 3]", color=DIM)
+    s.row(4, "@[Kai] count me in!")
+    s.compose(5, "see you at the trailhea")
+    s.hints("ENT send  Fn+R @  Fn;. scroll")
+    return s
+
+
+chat().save("chat")
 
 s = Screen()   # DM with delivery mark
 s.status("@Alice")
@@ -143,9 +167,9 @@ s.save("dm")
 
 s = Screen()   # 2 CON contacts
 s.status("2 CON")
-for r, (name, right, color) in enumerate([("*Alice", "D  now", AMBER), ("Kai", "3   6m", AMBER),
-                                          ("Bob", "2   1h", AMBER), ("[R]Bay Lounge", "1   2h", AMBER),
-                                          ("+Dana", "?   3h", DIM), ("Eve", "?   1d", AMBER)]):
+for r, (name, right, color) in enumerate([("*Alice", "D  now", FG), ("Kai", "3   6m", FG),
+                                          ("Bob", "2   1h", FG), ("[R]Bay Lounge", "1   2h", FG),
+                                          ("+Dana", "?   3h", DIM), ("Eve", "?   1d", FG)]):
     s.row(r, name, right, sel=(r == 0), color=color)
 s.hints("ENT info  type to filter")
 s.save("contacts")
@@ -160,16 +184,16 @@ s.save("contact")
 
 s = Screen()   # 3 RPT with a discovery running
 s.status("3 RPT")
-for r, (name, right, color) in enumerate([("Hilltop", "+6/+4", AMBER), ("Ridge-2", "+1/-2", AMBER),
-                                          ("+3fa2c1d0", "-5/-7", DIM), ("Downtown", "-4dB  12m", AMBER),
-                                          ("Bay Bridge", "-9dB   1h", AMBER), ("Twin Peaks", "3   2h", AMBER)]):
+for r, (name, right, color) in enumerate([("Hilltop", "+6/+4", FG), ("Ridge-2", "+1/-2", FG),
+                                          ("+3fa2c1d0", "-5/-7", DIM), ("Downtown", "-4dB  12m", FG),
+                                          ("Bay Bridge", "-9dB   1h", FG), ("Twin Peaks", "3   2h", FG)]):
     s.row(r, name, right, sel=(r == 0), color=color)
 s.hints("Listening 42s: 3 replies")
 s.save("repeaters")
 
 s = Screen()   # 4 RAD
 s.status("4 RAD")
-s.seven("910.525", W - 26, BODY_Y, AMBER)
+s.seven("910.525", W - 26, BODY_Y, FG)
 s.text("MHz", W - 24, BODY_Y + 32, DIM)
 s.row(3, "SF7 BW62.5 CR5 22dBm")
 s.row(4, "RSSI -98 SNR  6.5 NF-112")
@@ -184,5 +208,20 @@ for r, (k, v) in enumerate([("Auto-add", "< chat+rpt >"), ("Overwrite old", "< o
     s.row(r, k, v, sel=(r == 3))
 s.hints("ENT edit   , / change")
 s.save("settings")
+
+# every colour scheme, labelled, 4 per row
+GAP, LABEL = 8, 20
+cols = 4
+rows = (len(THEMES) + cols - 1) // cols
+sheet = Screen()
+sheet.img = Image.new("RGB", (cols * (W + GAP) - GAP, rows * (H + LABEL + GAP) - GAP), (40, 40, 40))
+for i, (name, _) in enumerate(THEMES):
+    set_theme(i)
+    x, y = (i % cols) * (W + GAP), (i // cols) * (H + LABEL + GAP)
+    sheet.img.paste(chat().img, (x, y))
+    sheet.text(name, x + (W - len(name) * 8) // 2, y + H + 2, (220, 220, 220))
+sheet.img.resize((sheet.img.width * SCALE, sheet.img.height * SCALE), Image.Resampling.NEAREST).save(
+    os.path.join(OUT, "themes.png"))
+set_theme(0)
 
 print("wrote", sorted(os.listdir(OUT)))

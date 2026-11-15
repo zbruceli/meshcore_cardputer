@@ -7,6 +7,20 @@ const uint16_t SCREEN_OFF_SECS[6] = { 15, 30, 60, 120, 300, 0 };
 
 M5Canvas canvas(&M5Cardputer.Display);
 
+const Theme THEMES[] = {   // name fits "Colours < ... >"; dim keeps ~3:1 contrast against bg
+  { "Amber",    0x0000, 0xFCA0, 0x7A40, 0xF986 },   // #FF9500 / #7A4800 / #FF3030 on black: pager, plasma
+  { "Green",    0x0000, 0x37EC, 0x1BC6, 0xF986 },   // #33FF66 / #1A7A33: green phosphor terminal
+  { "VFD",      0x0000, 0x479A, 0x1B6C, 0xFA8A },   // #40F0D0 / #1A6E60: Hi-Fi vacuum fluorescent display
+  { "Red",      0x0000, 0xF943, 0xB101, 0xFFFF },   // #FF2A1A / #B0200E, white alert: LED, night vision
+  { "Blue LCD", 0x08EC, 0xEF9F, 0x6C17, 0xFB0C },   // #E8F0FF / #6A80B8 on #0A1E60: backlit ham radio LCD
+  { "LCD",      0xADD2, 0x1922, 0x52E8, 0x8082 },   // #1C2414 / #505E44 on #A8B890: reflective pager LCD
+  { "Paper",    0xFFFF, 0x0000, 0x8410, 0xD000 },   // black / #808080 / #D00000 on white
+};
+const int NUM_THEMES = sizeof(THEMES) / sizeof(THEMES[0]);
+const Theme* theme = &THEMES[0];
+
+void themeApply() { theme = &THEMES[prefs.theme < NUM_THEMES ? prefs.theme : 0]; }
+
 static enum { DISP_ON, DISP_DIM, DISP_OFF } disp = DISP_ON;
 static uint32_t last_activity = 0, last_tick = 0, last_batt_read = 0;
 static uint32_t seen_added = 0, seen_seq = 0;
@@ -19,7 +33,7 @@ static uint8_t batt_pct = 0;
 
 // Status bar: title (12 chars) | unread | signal | battery | clock, with thin dividers between the right-hand groups.
 void drawStatus(const char* title) {
-  canvas.fillRect(0, 0, SCR_W, ROW_H, C_AMBER);
+  canvas.fillRect(0, 0, SCR_W, ROW_H, C_FG);
   canvas.setTextColor(C_BG);
   char t[13];
   toAscii(t, title, 12);
@@ -48,7 +62,7 @@ void drawStatus(const char* title) {
 
   char s[12];
   snprintf(s, sizeof(s), "%3d%%", batt_pct);
-  canvas.setTextColor(batt_pct <= 10 ? C_RED : C_BG);
+  canvas.setTextColor(batt_pct <= 10 ? C_ALERT : C_BG);
   canvas.drawString(s, 154, 0);
   canvas.drawFastVLine(192, 3, 10, C_BG);
 
@@ -60,7 +74,7 @@ void drawStatus(const char* title) {
 void drawHints(const char* hints) {
   canvas.drawFastHLine(0, HINT_Y - 2, SCR_W, C_DIM);
   if (toast_until && (int32_t)(millis() - toast_until) < 0) {
-    canvas.fillRect(0, HINT_Y, SCR_W, ROW_H, C_AMBER);
+    canvas.fillRect(0, HINT_Y, SCR_W, ROW_H, C_FG);
     canvas.setTextColor(C_BG);
     canvas.drawString(toast_text, 0, HINT_Y);
   } else {
@@ -112,7 +126,7 @@ void drawInput(int row, const char* buf, int rows) {
   const int per = COLS - 1;
   int len = strlen(buf);
   int first = max(0, len / per + 1 - rows);   // first wrapped line shown, keeps the cursor in view
-  canvas.setTextColor(C_AMBER);
+  canvas.setTextColor(C_FG);
   canvas.drawString(first ? "<" : ">", 0, BODY_Y + row * ROW_H);
   for (int r = 0; r < rows && (first + r) * per <= len; r++) {
     char line[COLS];
@@ -120,7 +134,7 @@ void drawInput(int row, const char* buf, int rows) {
     canvas.drawString(line, 8, BODY_Y + (row + r) * ROW_H);
   }
   int cx = 8 + (len % per) * 8, cy = BODY_Y + (row + len / per - first) * ROW_H;
-  if ((millis() / 500) & 1) canvas.fillRect(cx, cy + 13, 7, 2, C_AMBER);
+  if ((millis() / 500) & 1) canvas.fillRect(cx, cy + 13, 7, 2, C_FG);
 }
 
 void toast(const char* text) {
@@ -246,11 +260,11 @@ static void powerTick() {
 
 void uiSplash() {
   M5Cardputer.Display.setRotation(1);
-  M5Cardputer.Display.fillScreen(TFT_BLACK);
+  M5Cardputer.Display.fillScreen(C_BG);
   M5Cardputer.Display.setFont(&fonts::AsciiFont8x16);
-  M5Cardputer.Display.setTextColor(C_AMBER, TFT_BLACK);
+  M5Cardputer.Display.setTextColor(C_FG, C_BG);
   M5Cardputer.Display.drawString("MeshCore Cardputer v" FW_VERSION, 8, 48);
-  M5Cardputer.Display.setTextColor(C_DIM, TFT_BLACK);
+  M5Cardputer.Display.setTextColor(C_DIM, C_BG);
   M5Cardputer.Display.drawString("Starting... first boot can", 8, 72);
   M5Cardputer.Display.drawString("take up to a minute", 8, 88);
 }

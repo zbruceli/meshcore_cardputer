@@ -29,7 +29,7 @@ Ranked by importance against effort. Every release must pass the upgrade rules i
 | # | Item | Value | Effort |
 |---|---|---|---|
 | 1 | ✅ **Upgrade safety:** atomic saves (temp file + rename, recovered at boot) for `/prefs` and `/msgs`; upgrade test over v0.3.2 with real data passed (esptool at 0x0). Unreleased; M5Burner path checked at the next release | Must-have now that v0.3.2 is out | ½ day |
-| 2 | **Colour schemes:** 7 four-colour themes (amber default, green, VFD cyan, red, blue LCD, classic LCD, paper) | High, visible | ½–1 day |
+| 2 | ✅ **Colour schemes:** 7 four-colour themes (amber default, green, VFD cyan, red, blue LCD, classic LCD, paper) | High, visible | ½–1 day |
 | 3 | **GPS clock setting:** `GPS < off / on >`, RMC only, silent after fix, re-sync every 6 h | Medium: clock without mesh or app | ½–1 day |
 | 4 | **Test tab, part 1:** hidden `6 TST` tab, live packet log, stats, RSSI graph (no TX) | High for field use and support | 1½ days |
 | 5 | **Low battery and power off:** warning, cut-off, deep sleep on long G0 press, wake on G0 | High | 1 day |

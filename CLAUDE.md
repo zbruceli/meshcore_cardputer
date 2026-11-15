@@ -61,7 +61,8 @@ src/ui_screens.cpp   per-screen draw()/key() + dispatch
 
 ## UI rules
 
-- Colours: bg `#000000`, amber `#FF9500`, dim `#7A4800`, selection = inverse, red `#FF3030` only for errors.
+- Colours: only `C_BG` `C_FG` `C_DIM` `C_ALERT` from the current theme (`THEMES` in `ui.cpp`, default amber
+  `#FF9500` / dim `#7A4800` on black); selection = inverse; `C_ALERT` only for errors. Never hard-code a colour.
 - Layout: 16 px status bar · 6 rows of 8×16 text (30 columns) · 16 px key-hint bar. Hints must fit 30 chars.
 - Keys: `Tab` / `1..5` tabs (`Fn+digit` while typing), `; . , /` arrows (`Fn` needed while typing), `Enter`,
   `` ` `` back, `Del`, letters as screen actions. G0 = advert. Destructive actions need the key pressed twice.
