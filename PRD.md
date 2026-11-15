@@ -45,6 +45,10 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
 - **Power:** dim at half the screen timeout, off at the timeout (default 30 s), CPU 80 MHz while off. Phase 2:
   light sleep, power off, ≥ 24 h idle listening.
 
+- **Upgrades:** installing a newer release (web installer, M5Burner, esptool) keeps identity, name, radio and UI
+  settings, contacts, channels, message history and app pairing. Format changes migrate data automatically and
+  safely; only an explicit erase or factory reset loses data.
+
 ## Constraints
 
 No PSRAM: fixed-size arrays, ≥ 60 KB free heap (Bluetooth takes ~100 KB). The mesh engine is MeshCore's own

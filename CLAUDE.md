@@ -1,7 +1,8 @@
 # CLAUDE.md
 
 MeshCore chat firmware for **M5Stack Cardputer-Adv + Cap LoRa-1262**: screen + keyboard, no phone needed, and the
-official MeshCore app can pair over BLE. `README.md` = user docs, `PRD.md` = scope, `roadmap_plan.md` = status.
+official MeshCore app can pair over BLE. `README.md` = user docs, `PRD.md` = scope, `roadmap_plan.md` = status and
+priorities.
 
 ## Principles
 
@@ -84,8 +85,26 @@ release's `.bin`.
 ## Working rules
 
 - Never transmit before onboarding has set a region preset (`the_mesh.loop()` isn't called until then).
-- `Prefs` is saved raw: only **append** fields (older, shorter files keep defaults). Don't reorder.
 - After changing radio/mesh code, verify interop against the official MeshCore app.
 - Check free heap (printed on boot) when adding data structures.
 - Keep `roadmap_plan.md` status marks current; update `PRD.md` only when scope changes; `README.md` (and
   `scripts/render_screens.py`) when keys or screens change.
+
+## Upgrades and data
+
+v0.3.2 is in users' hands (web installer, M5Burner). Flashing a release must keep identity, settings, contacts,
+channels and messages; only an explicit erase or factory reset may lose them.
+
+- Partition table (`default_8MB.csv`, SPIFFS at 0x670000) and the release image layout (no data partition) never
+  change: either would wipe or orphan user data.
+- `/prefs` is a raw struct: only **append** fields at the end (shorter files keep defaults), never reorder, resize or
+  reuse one. Never bump `PREFS_VERSION`: `prefsLoad()` resets everything on a mismatch.
+- `/msgs` is raw `Msg` records with no header: `Msg`'s layout is frozen. A new layout goes to a new file
+  (`/msgs2`) read from `/msgs` once, as the pre-v0.3 migration does.
+- Migrations: run once at boot, idempotent, write the new file before relying on it, keep the old file, never write
+  over data that failed to parse. Keep migration code for every released format (v0.2 users may jump straight to
+  the latest).
+- Engine files (`/identity`, `/prefs.json`, `/contacts3`, `/channels2`) belong to MeshCore: before bumping the
+  MeshCore commit, check `DataStore.cpp` and NodePrefs for format changes.
+- Every release passes the upgrade test in `roadmap_plan.md`. Downgrades are best effort (older builds read only
+  the fields they know).

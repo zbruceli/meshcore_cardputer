@@ -79,8 +79,8 @@ git clone https://github.com/zbruceli/meshcore_cardputer.git && cd meshcore_card
 pio run -t upload        # PlatformIO; then power-cycle the Cardputer
 ```
 
-Docs: [PRD.md](PRD.md) (scope) · [roadmap_plan.md](roadmap_plan.md) (status) · [CLAUDE.md](CLAUDE.md) (code,
-hardware, rules). Screenshots: `python3 scripts/render_screens.py`.
+Docs: [PRD.md](PRD.md) (scope) · [roadmap_plan.md](roadmap_plan.md) (status, priorities) ·
+[CLAUDE.md](CLAUDE.md) (code, hardware, rules). Screenshots: `python3 scripts/render_screens.py`.
 
 Built on [MeshCore](https://github.com/meshcore-dev/MeshCore) and [M5Cardputer](https://github.com/m5stack/M5Cardputer);
 pins from [MeshCore-Cardputer-ADV](https://github.com/Stachugit/MeshCore-Cardputer-ADV). License: [MIT](LICENSE).
