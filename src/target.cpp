@@ -80,11 +80,11 @@ bool radio_init() {
 void gpsBegin() {
   Serial1.setRxBufferSize(1024);   // 115200 baud and loop() may be busy drawing for a few ms
   Serial1.begin(115200, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
-  gpsOutput(false);   // silent from boot, as the fork: no GPS clock until TX is sorted out
+  gpsOutput(false);   // silent until gpsApply() (Settings > GPS)
 }
 
 // The module is always powered and streams every NMEA sentence by default. Keep only RMC (all we parse) while
-// we want the time, and nothing at all otherwise, as the sosprz fork silences it at boot.
+// we want the time, and nothing at all otherwise.
 // CASIC PCAS03 fields: GGA,GLL,GSA,GSV,RMC,VTG,ZDA,ANT,DHV,LPS,,,UTC,GST. Not saved on the module.
 void gpsOutput(bool rmc) {
   Serial1.print(rmc ? "$PCAS03,0,0,0,0,1,0,0,0,0,0,,,0,0*03\r\n" : "$PCAS03,0,0,0,0,0,0,0,0,0,0,,,0,0*02\r\n");

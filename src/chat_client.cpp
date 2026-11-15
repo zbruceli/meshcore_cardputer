@@ -2,7 +2,6 @@
 #include "chat_client.h"
 #include "target.h"
 
-#define CLOCK_SANE_MIN  1767225600   // 1 Jan 2026: ignore adverts from nodes with an unset clock
 
 ChatClient client;
 

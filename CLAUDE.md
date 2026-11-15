@@ -51,7 +51,8 @@ src/ui_screens.cpp   per-screen draw()/key() + dispatch
   (P0 "BYPASS" -> Stamp LoRa-1262 pin "SW"; without it TX is about -15 dBm, per d4rkmen/plai #11).
   Arduino `Wire` is moved to the Grove port (SDA 2 / SCL 1).
 - Cap GPS ATGM336H-6N on UART1: ESP RX 15, TX 13, 115200 8N1. No power-enable pin found: always on, streams
-  NMEA unless told otherwise (`$PCAS03`). Silenced from boot for now (no GPS clock) while TX is investigated.
+  NMEA unless told otherwise (`$PCAS03`). Silent from boot; with Settings > GPS clock on it outputs RMC only until
+  the clock is set (`gpsLoop()` in main.cpp). Position is not used.
 - SD card shares the LoRa SPI bus (CS 12, kept high). Don't drive G46 (not a Cap power enable, per newer ports).
 - "Not heard back" indoors is the location, not the firmware: RTL-SDR (`scripts/sdr_burst.py`) shows our TX within
   ~0.5 dB of a T-Deck Plus, which fails from the same spot too. On a hillside (v0.3.0) both pass the Bay Area health

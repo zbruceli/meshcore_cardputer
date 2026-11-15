@@ -1032,7 +1032,7 @@ bool screenTick() {   // RSSI page: sample 10x a second while it's on screen
 // ================================================================ settings
 
 enum { SET_NAME, SET_REGION, SET_FREQ, SET_BW, SET_SF, SET_CR, SET_TX, SET_HASH, SET_AUTOADD, SET_OVERWRITE,
-       SET_BT, SET_PIN, SET_BRIGHT, SET_THEME, SET_SCREEN, SET_BEEP, SET_TEST, SET_TZ, SET_CLOCK, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
+       SET_BT, SET_PIN, SET_BRIGHT, SET_THEME, SET_SCREEN, SET_BEEP, SET_TEST, SET_TZ, SET_CLOCK, SET_GPS, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
 static const float BWS[] = { 7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500 };
 #define NUM_BWS (int)(sizeof(BWS) / sizeof(BWS[0]))
 static const char* ADD_LABELS[NUM_ADD_MODES] = { "chat+rpt", "all", "chat", "off" };   // ADD_* order
@@ -1084,6 +1084,9 @@ static void drawSettings() {
         if (client.clockSynced()) fmtClock(v, sizeof(v)); else strcpy(v, "not set");
         break;
       }
+      case SET_GPS:     label = "GPS clock";
+        strcpy(v, gps_state == GPS_OFF ? "< off >" : gps_state == GPS_FIX ? "< on: fix >" : "< on: search >");
+        break;
       case SET_ID:      label = "My ID"; mesh::Utils::toHex(v, client.selfPubKey(), 4); break;
       case SET_VERSION: label = "Firmware"; snprintf(v, sizeof(v), "v%s", FW_VERSION); break;
       case SET_RESET:   label = armed ? "ENT again to WIPE ALL" : "Factory reset"; break;
@@ -1152,6 +1155,7 @@ ui_prefs:   // the device's own settings
     case SET_SCREEN: prefs.screen_off = (prefs.screen_off + 6 + d) % 6; break;
     case SET_BEEP:   prefs.beep = !prefs.beep; break;
     case SET_TEST:   prefs.test_tab = !prefs.test_tab; break;
+    case SET_GPS:    prefs.gps = !prefs.gps; gpsApply(); break;
     case SET_TZ:     prefs.tz_hours = constrain(prefs.tz_hours + d, -12, 14); break;
     default: return;
   }

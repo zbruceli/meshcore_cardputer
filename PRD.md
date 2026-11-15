@@ -37,8 +37,9 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
 - **Test tab** (`6 TST`, off by default): last 32 packets in/out with details (path, sender, last repeater), counters
   since reset (CRC errors, flood/direct, airtime incl. last hour, loop time, heap), live RSSI graph. Receive only.
 - **Settings:** region or manual radio parameters, TX power, path hash size, auto-add, Bluetooth on/off and app
-  PIN, brightness, colour scheme, screen timeout, beep, test tab, time zone, clock, factory reset.
-- **Clock:** no RTC chip: GPS (silenced for now) → phone app → two agreeing mesh senders → manual. `--:--` until set.
+  PIN, brightness, colour scheme, screen timeout, beep, test tab, GPS clock, time zone, clock, factory reset.
+- **Clock:** no RTC chip: GPS (optional; RMC only until two fixes agree, then silent, re-sync every 6 h) → phone
+  app → two agreeing mesh senders → manual. `--:--` until set.
 - **Phone app:** the official MeshCore app pairs as with any companion radio (`MeshCore-<name>`, 6-digit PIN,
   random each boot unless set from the app); shares contacts, channels and node settings. Messages sent from one
   side don't appear in the other's history; incoming ones show on both.

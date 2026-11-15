@@ -46,6 +46,35 @@ void bluetoothApply() {   // on only once onboarded (no app-driven TX before a r
   else interface_manager.disableBluetooth();
 }
 
+// GPS clock (Settings > GPS): the module streams only RMC (time + fix flag, ~70 bytes/s) until two valid fixes
+// a second apart agree, sets the clock, then goes silent until the next re-sync. The module itself is always
+// powered (no enable pin), so "off" only stops its output. GPS time beats the phone app and the mesh.
+#define GPS_RESYNC_MILLIS (6 * 3600000UL)   // the RTC drifts ~0.1 s an hour
+uint8_t gps_state = GPS_OFF;
+static uint32_t gps_fix_at, gps_last;
+
+void gpsApply() {
+  gps_state = prefs.gps ? GPS_SEARCH : GPS_OFF;
+  gps_last = 0;
+  gpsOutput(prefs.gps);
+}
+
+static void gpsLoop() {
+  uint32_t t = gpsReadTime();   // also drains anything the module sent
+  if (gps_state == GPS_SEARCH && t >= CLOCK_SANE_MIN) {
+    if (gps_last && t - gps_last >= 1 && t - gps_last <= 2) {
+      client.setClock(t, CLOCK_GPS);
+      if (Serial) Serial.printf("GPS clock set: %u\n", (unsigned)t);
+      gpsOutput(false);
+      gps_state = GPS_FIX;
+      gps_fix_at = millis();
+    }
+    gps_last = t;
+  } else if (gps_state == GPS_FIX && millis() - gps_fix_at > GPS_RESYNC_MILLIS) {
+    gpsApply();
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   board.begin();
@@ -63,6 +92,7 @@ void setup() {
   fast_rng.begin(radio_ok ? radio_driver.getRngSeed() : esp_random());
 
   gpsBegin();
+  gpsApply();
   store.begin();
   the_mesh.begin();
   migrateOldData();
@@ -97,20 +127,7 @@ void loop() {
   }
   rtc_clock.tick();
 
-  // GPS time beats the mesh. Once set, the GPS is silenced (its NMEA stream is suspected of hurting the radio)
-  // and woken hourly to re-sync (the RTC drifts slowly). Inactive while gpsBegin() keeps the GPS silent.
-  static uint32_t gps_set_at = 0;
-  static bool gps_on = true;
-  uint32_t gps_time = gpsReadTime();
-  if (gps_time && gps_on) {
-    client.setClock(gps_time, CLOCK_GPS);
-    gps_set_at = millis();
-    gpsOutput(false);
-    gps_on = false;
-  } else if (!gps_on && millis() - gps_set_at > 3600000UL) {
-    gpsOutput(true);
-    gps_on = true;
-  }
+  gpsLoop();
 
   storeLoop();
   bool display_off = uiLoop();

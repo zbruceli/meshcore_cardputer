@@ -29,6 +29,7 @@ struct Prefs {
   uint8_t ble_off;          // 1 = Bluetooth (phone app link) disabled
   uint8_t theme;            // index into THEMES (colour scheme), 0 = amber
   uint8_t test_tab;         // 1 = show the 6 TST tab (packets, stats, RSSI)
+  uint8_t gps;              // 1 = set the clock from the GPS
 };
 
 extern Prefs prefs;

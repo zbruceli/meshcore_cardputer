@@ -28,6 +28,7 @@ and repeaters.
 - **Contacts and repeaters:** auto-added from adverts, favourites, share, filter by typing, repeater discovery
   with SNR both ways. Lists sort by latest activity.
 - **Phone app over Bluetooth:** same contacts, channels and radio settings as the keyboard; both work at once.
+- **Clock:** from the GPS (turn on **GPS clock** in SET), the phone app or the mesh; or set it by hand.
 - **Radio and power:** region presets (868–923 MHz) or manual settings, airtime and noise floor, screen dims and
   sleeps when idle.
 - **Colour schemes:** amber (default), green phosphor, VFD cyan, red, blue LCD, classic LCD and paper.

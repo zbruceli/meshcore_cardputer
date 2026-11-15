@@ -13,6 +13,7 @@
 #define MAX_DISCOVERED    16
 #define DISCOVER_MILLIS   60000
 enum { CLOCK_NONE, CLOCK_MESH, CLOCK_MANUAL, CLOCK_GPS, CLOCK_APP };
+#define CLOCK_SANE_MIN    1767225600   // 1 Jan 2026: older times come from an unset clock
 
 #define MAX_SENT_ACKS     16   // expected ACKs of recent DM attempts (each attempt has its own)
 struct SentAck { uint32_t ack, sender_ts; uint8_t conv[CONV_ID_LEN]; };
@@ -146,3 +147,6 @@ extern ChatClient client;
 extern DataStore store;
 extern MultiSerialInterface interface_manager;   // the phone app link (Bluetooth)
 void bluetoothApply();   // on/off from prefs (main.cpp)
+enum { GPS_OFF, GPS_SEARCH, GPS_FIX };
+extern uint8_t gps_state;
+void gpsApply();         // on/off from prefs (main.cpp)
