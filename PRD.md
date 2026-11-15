@@ -34,15 +34,17 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
 - **Repeaters:** zero-hop discovery (`CTL_TYPE_NODE_DISCOVER_REQ`), replies for 60 s with SNR both ways; known
   repeaters by when last heard, with the SNR of their last relay; unknown ones can be added.
 - **Radio info:** big frequency readout, SF/BW/CR/power, RSSI/SNR/noise floor, packet counts, airtime, battery.
+- **Test tab** (`6 TST`, off by default): last 32 packets in/out with details (path, sender, last repeater), counters
+  since reset (CRC errors, flood/direct, airtime incl. last hour, loop time, heap), live RSSI graph. Receive only.
 - **Settings:** region or manual radio parameters, TX power, path hash size, auto-add, Bluetooth on/off and app
-  PIN, brightness, colour scheme, screen timeout, beep, time zone, clock, factory reset.
+  PIN, brightness, colour scheme, screen timeout, beep, test tab, time zone, clock, factory reset.
 - **Clock:** no RTC chip: GPS (silenced for now) → phone app → two agreeing mesh senders → manual. `--:--` until set.
 - **Phone app:** the official MeshCore app pairs as with any companion radio (`MeshCore-<name>`, 6-digit PIN,
   random each boot unless set from the app); shares contacts, channels and node settings. Messages sent from one
   side don't appear in the other's history; incoming ones show on both.
 - **UI:** four-colour schemes (default amber `#FF9500` / dim `#7A4800` on black; also green, VFD, red, blue LCD,
   LCD, paper), alert colour only for errors, 8×16 font, 16 px status bar · 6 rows · 16 px hint bar; tabs `1 MSG`
-  `2 CON` `3 RPT` `4 RAD` `5 SET`; typing in a chat goes straight to the compose line.
+  `2 CON` `3 RPT` `4 RAD` `5 SET` (`6 TST` optional); typing in a chat goes straight to the compose line.
 - **Power:** dim at half the screen timeout, off at the timeout (default 30 s), CPU 80 MHz while off. Phase 2:
   light sleep, power off, ≥ 24 h idle listening.
 

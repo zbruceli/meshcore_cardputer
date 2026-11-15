@@ -35,7 +35,7 @@ void ChatClient::setAddMode(int mode, bool overwrite) {
 
 // ---- every packet in and out (radio hooks) ----
 
-static const char* PKT_TYPES[] = { "REQ", "RESP", "TXT", "ACK", "ADVERT", "GRP_TXT", "GRP_DATA", "ANON_REQ",
+const char* const PKT_TYPES[16] = { "REQ", "RESP", "TXT", "ACK", "ADVERT", "GRP_TXT", "GRP_DATA", "ANON_REQ",
                                    "PATH", "TRACE", "MULTI", "CTRL", "?", "?", "?", "RAW" };
 
 // The last hash in a flood packet's path is the repeater that transmitted it to us.
@@ -62,9 +62,74 @@ bool ChatClient::repeaterSnr(const uint8_t* pub_key, int8_t& snr4, uint32_t& at)
   return false;
 }
 
+void ChatClient::logPacket(mesh::Packet& pkt, int len, bool tx, float snr) {
+  PktLog& e = pkt_log[pkt_total++ % PKT_LOG_SIZE];
+  memset(&e, 0, sizeof(e));
+  e.at = now();
+  e.type = pkt.getPayloadType();
+  e.tx = tx;
+  e.flood = pkt.isRouteFlood();
+  e.hops = pkt.getPathHashCount();
+  e.hash_size = pkt.getPathHashSize();
+  e.len = len;
+  if (!tx) {
+    e.snr4 = constrain((int)(snr * 4), -128, 127);
+    e.rssi = constrain((int)radio_driver.getLastRSSI(), -128, 0);
+  }
+  memcpy(e.path, pkt.path, min(e.hops * e.hash_size, PKT_LOG_PATH));
+  memcpy(e.key, pkt.payload, min((int)pkt.payload_len, 4));
+  uint8_t hash[MAX_HASH_SIZE];
+  pkt.calculatePacketHash(hash);
+  memcpy(e.hash, hash, 4);
+}
+
+const PktLog* ChatClient::pktBySeq(uint32_t seq) const {
+  if (seq >= pkt_total || pkt_total - seq > PKT_LOG_SIZE) return NULL;
+  return &pkt_log[seq % PKT_LOG_SIZE];
+}
+
+RadioStats ChatClient::stats() {
+  const RadioStats& b = stats_base;
+  RadioStats s;
+  s.rx = radio_driver.getPacketsRecv() - b.rx;
+  s.rx_err = radio_driver.getPacketsRecvErrors() - b.rx_err;
+  s.tx = radio_driver.getPacketsSent() - b.tx;
+  s.rx_flood = the_mesh.getNumRecvFlood() - b.rx_flood;
+  s.rx_direct = the_mesh.getNumRecvDirect() - b.rx_direct;
+  s.tx_flood = the_mesh.getNumSentFlood() - b.tx_flood;
+  s.tx_direct = the_mesh.getNumSentDirect() - b.tx_direct;
+  s.tx_air = the_mesh.getTotalAirTime() - b.tx_air;
+  s.rx_air = the_mesh.getReceiveAirTime() - b.rx_air;
+  s.at = millis() - b.at;   // time since the reset
+  return s;
+}
+
+void ChatClient::resetStats() {   // the counters belong to MeshCore: remember them instead of clearing them
+  memset(&stats_base, 0, sizeof(stats_base));
+  stats_base = stats();
+  stats_base.at = millis();
+}
+
+uint32_t ChatClient::txAirLastHour(uint32_t& window_ms) {
+  uint32_t total = the_mesh.getTotalAirTime();
+  if (air_min_count < 60) {   // less than an hour of samples: since boot
+    window_ms = millis();
+    return total;
+  }
+  window_ms = millis() - (air_min_at - 59 * 60000UL);
+  return total - air_min[air_min_count % 60];   // the oldest sample
+}
+
+int ChatClient::repeatersHeard() {
+  int n = 0;
+  for (int i = 0; i < MAX_RPT_SNR; i++) n += rpt_snr[i].len != 0;
+  return n;
+}
+
 void ChatClient::packetIn(const uint8_t* raw, int len, float snr) {
   mesh::Packet pkt;
   if (!pkt.readFrom(raw, len)) return;
+  logPacket(pkt, len, false, snr);
   int hops = pkt.getPathHashCount();
   if (pkt.isRouteFlood() && hops > 0) {
     uint8_t hs = pkt.getPathHashSize();
@@ -95,6 +160,7 @@ void ChatClient::packetOut(const uint8_t* raw, int len) {
     pkt.calculatePacketHash(echo_hash);
     echo_wait_tx = false;
   }
+  logPacket(pkt, len, true, 0);
   if (!Serial) return;
   Serial.printf("TX %-8s %s hops %d len %d\n", PKT_TYPES[pkt.getPayloadType() & 0x0F],
                 pkt.isRouteFlood() ? "flood " : "direct", pkt.getPathHashCount(), len);
@@ -110,6 +176,10 @@ void ChatClient::logStatus() {
 
 void ChatClient::loop() {
   checkDMRetries();
+  if (air_min_count == 0 || millis() - air_min_at >= 60000) {   // TX airtime once a minute, for the last hour
+    air_min_at = millis();
+    air_min[air_min_count++ % 60] = the_mesh.getTotalAirTime();
+  }
   // the phone app sets the clock directly: notice the jump
   int32_t offset = (int32_t)(now() - millis() / 1000);
   if (clock_offset && abs(offset - clock_offset) > 60 && now() > CLOCK_SANE_MIN) clock_src = CLOCK_APP;

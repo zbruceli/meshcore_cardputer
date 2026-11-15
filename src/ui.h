@@ -25,12 +25,14 @@ void themeApply();
 enum KeyCode { K_NONE, K_CHAR, K_UP, K_DOWN, K_LEFT, K_RIGHT, K_ENTER, K_BACK, K_DEL, K_TAB };
 struct Key { uint8_t code; char ch; bool fn; };
 
-enum Screen { S_REGION, S_EDIT, S_TZ, S_CONFIRM, S_INBOX, S_CHAT, S_CONTACTS, S_REPEATERS, S_CONTACT, S_RADIO, S_SETTINGS };
+enum Screen { S_REGION, S_EDIT, S_TZ, S_CONFIRM, S_INBOX, S_CHAT, S_CONTACTS, S_REPEATERS, S_CONTACT, S_RADIO, S_SETTINGS,
+              S_TEST, S_PACKET };
 
 extern M5Canvas canvas;
 extern const uint8_t BRIGHTNESS_LEVELS[4];
 extern const uint16_t SCREEN_OFF_SECS[6];   // 0 = never
 extern bool radio_ok;
+extern uint32_t loop_max_ms;   // longest loop() since the test tab's stats reset
 
 // ui.cpp: primitives
 void drawStatus(const char* title);
@@ -50,8 +52,9 @@ void go(Screen s);
 void screenDraw();
 void screenKey(const Key& k);
 bool screenShowsConv(const uint8_t conv[]);
+bool screenTick();   // every loop while the display is on: true = redraw
 
 void uiSplash();   // right after board.begin(): something on screen while storage is set up
 void uiBegin();
 void applyBrightness();
-void uiLoop();
+bool uiLoop();      // true while the display is off

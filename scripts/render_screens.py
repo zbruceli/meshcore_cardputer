@@ -209,6 +209,45 @@ for r, (k, v) in enumerate([("Auto-add", "< chat+rpt >"), ("Overwrite old", "< o
 s.hints("ENT edit   , / change")
 s.save("settings")
 
+s = Screen()   # 6 TST packets
+s.status("6 TST PKTS")
+for r, (left, right, tx) in enumerate([("14:31:58 GRP_TXT  F3", "-6.5 3f", False),
+                                       ("14:31:57 GRP_TXT  F2", "2.0 a1", False),
+                                       ("14:31:52 GRP_TXT  F0", "TX", True),
+                                       ("14:31:40 ADVERT   F4", "-9.2 c7", False),
+                                       ("14:31:33 ACK      D0", "7.5", False),
+                                       ("14:31:31 TXT      D2", "TX", True)]):
+    s.row(r, left, right, sel=(r == 0), color=DIM if tx else None)
+s.hints("ENT details     , / page")
+s.save("test_packets")
+
+s = Screen()   # 6 TST stats
+s.status("6 TST STATS")
+for r, t in enumerate(["RX 1203  CRC err 31 (2.5%)", "Flood  in 1102   out 52", "Direct in 101    out 35",
+                       "Air TX 0.4% 1h 0.6% RX 9%", "Rptrs 7  NF -112  heap 101K", "Loop max 24ms  for 3h12m"]):
+    s.row(r, t)
+s.hints("R reset         , / page")
+s.save("test_stats")
+
+s = Screen()   # 6 TST RSSI graph
+s.status("6 TST RSSI")
+s.row(0, "RSSI -109  NF -112 dBm")
+import random
+random.seed(7)
+top, bot = BODY_Y + ROW_H + 2, HINT_Y - 4
+for x in range(W):
+    v, pkt = -112 + random.randint(-3, 3), x in (40, 41, 42, 133, 134, 200, 201, 202, 203)
+    if pkt:
+        v = -84 if x < 100 else -97 if x < 160 else -71
+    elif 90 < x < 110:
+        v += 14   # a burst of interference
+    y = max(top, min(bot, bot - (v + 130)))
+    s.d.line([x, y, x, bot], fill=FG if pkt else DIM)
+for x in range(0, W, 4):
+    s.img.putpixel((x, bot - (-112 + 130)), FG)
+s.hints("bright = packet  , / page")
+s.save("test_rssi")
+
 # every colour scheme, labelled, 4 per row
 GAP, LABEL = 8, 20
 cols = 4

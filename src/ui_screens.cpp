@@ -4,7 +4,7 @@
 #include "chat_client.h"
 #include "presets.h"
 
-static const Screen TABS[] = { S_INBOX, S_CONTACTS, S_REPEATERS, S_RADIO, S_SETTINGS };
+static const Screen TABS[] = { S_INBOX, S_CONTACTS, S_REPEATERS, S_RADIO, S_SETTINGS, S_TEST };   // 6 only if on
 
 static Screen screen;
 static Screen chat_back;               // where Esc goes from a chat
@@ -824,10 +824,215 @@ static void keyRadio(const Key& k) {
     toast(client.sendAdvert(false) ? "Advert sent (zero-hop)" : "Advert failed");
 }
 
+// ================================================================ 6 TST: packets, stats, RSSI (hidden unless on in SET)
+
+enum { TP_PACKETS, TP_STATS, TP_RSSI, TP_COUNT };
+static const char* TP_TITLES[TP_COUNT] = { "6 TST PKTS", "6 TST STATS", "6 TST RSSI" };
+static int test_page;
+static uint32_t pkt_seen;              // pktTotal() at the last draw: new packets push the cursor down with its packet
+static uint32_t pkt_open;              // seq of the packet shown in S_PACKET
+static int8_t rssi_hist[SCR_W];        // live RSSI, one column per sample, oldest at rssi_head
+static uint8_t rssi_pkt[SCR_W / 8];    // bit set: a packet arrived in that sample (its RSSI is shown)
+static int rssi_head, rssi_count;
+static uint32_t rssi_at, rssi_rx;
+#define RSSI_TOP   (BODY_Y + ROW_H + 2)
+#define RSSI_BOT   (HINT_Y - 4)
+#define RSSI_MIN   -130                // dBm at the bottom of the graph, 1 px per dB above it
+
+static void fmtHms(char* dest, uint32_t ts) {   // local HH:MM:SS
+  uint32_t t = (ts + prefs.tz_hours * 3600 + 86400) % 86400;
+  sprintf(dest, "%02u:%02u:%02u", (unsigned)(t / 3600), (unsigned)(t / 60 % 60), (unsigned)(t % 60));
+}
+
+static int lastHop(const PktLog& e) {   // first byte of the last path hash (the repeater we heard), or -1
+  int i = (e.hops - 1) * e.hash_size;
+  return e.flood && e.hops > 0 && i < PKT_LOG_PATH ? e.path[i] : -1;
+}
+
+static void drawPackets() {
+  uint32_t total = client.pktTotal();
+  if (sel > 0) { sel += total - pkt_seen; top += total - pkt_seen; }   // on the newest row it stays live
+  pkt_seen = total;
+  int n = min(total, (uint32_t)PKT_LOG_SIZE);
+  listMove(sel, top, n, Key{K_NONE});
+  if (n == 0) drawRow(1, false, "No packets yet.", NULL, C_DIM);
+  for (int r = 0; r < BODY_ROWS && top + r < n; r++) {
+    const PktLog& e = *client.pktBySeq(total - 1 - (top + r));
+    char left[COLS + 1], right[12], t[10];
+    fmtHms(t, e.at);
+    snprintf(left, sizeof(left), "%s %-8s %c%d", t, PKT_TYPES[e.type & 0x0F], e.flood ? 'F' : 'D', e.hops);
+    int hop = lastHop(e);
+    if (e.tx) strcpy(right, "TX");
+    else if (hop >= 0) snprintf(right, sizeof(right), "%.1f %02x", e.snr4 / 4.0f, hop);
+    else snprintf(right, sizeof(right), "%.1f", e.snr4 / 4.0f);
+    drawRow(r, top + r == sel, left, right, e.tx ? C_DIM : C_FG);
+  }
+  drawHints("ENT details     , / page");
+}
+
+static void drawPacket() {
+  drawStatus("6 TST PKT");
+  const PktLog* e = client.pktBySeq(pkt_open);
+  if (!e) {
+    drawRow(1, false, "No longer in the log.", NULL, C_DIM);
+    drawHints("` back");
+    return;
+  }
+  char s[COLS + 1], t[10];
+  fmtHms(t, e->at);
+  snprintf(s, sizeof(s), "%s %s %s", PKT_TYPES[e->type & 0x0F], e->flood ? "flood" : "direct", e->tx ? "sent" : "");
+  drawRow(0, false, s, t);
+  if (e->tx) snprintf(s, sizeof(s), "%d bytes", e->len);
+  else snprintf(s, sizeof(s), "SNR %.1f RSSI %d %dB", e->snr4 / 4.0f, e->rssi, e->len);
+  drawRow(1, false, s);
+
+  int n = snprintf(s, sizeof(s), "Path(%d)", e->hops);   // hashes as stored, ".." if longer than kept
+  for (int h = 0; h < e->hops && n < COLS - 3; h++) {
+    if ((h + 1) * e->hash_size > PKT_LOG_PATH) { n += snprintf(s + n, sizeof(s) - n, " .."); break; }
+    n += snprintf(s + n, sizeof(s) - n, " ");
+    for (int b = 0; b < e->hash_size; b++) n += snprintf(s + n, sizeof(s) - n, "%02x", e->path[h * e->hash_size + b]);
+  }
+  drawRow(2, false, s);
+
+  // who: the advert's sender, the channel, or the dest/src hashes at the start of the payload
+  ContactInfo* c = NULL;
+  uint8_t type = e->type & 0x0F;
+  if (type == PAYLOAD_TYPE_ADVERT) {
+    c = the_mesh.lookupContactByPubKey(e->key, 4);
+    if (c) snprintf(s, sizeof(s), "From %s", c->name);
+    else snprintf(s, sizeof(s), "From %02x%02x%02x%02x", e->key[0], e->key[1], e->key[2], e->key[3]);
+  } else if (type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_GRP_DATA) {
+    snprintf(s, sizeof(s), "Channel %02x", e->key[0]);
+    ChannelDetails ch;
+    for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
+      if (the_mesh.getChannel(i, ch) && ch.name[0] && ch.channel.hash[0] == e->key[0]) {
+        snprintf(s, sizeof(s), "Channel %s", ch.name);
+        break;
+      }
+  } else if (type == PAYLOAD_TYPE_REQ || type == PAYLOAD_TYPE_RESPONSE || type == PAYLOAD_TYPE_TXT_MSG ||
+             type == PAYLOAD_TYPE_PATH) {
+    bool me = e->key[0] == client.selfPubKey()[0];
+    if (me) snprintf(s, sizeof(s), "To me, from %02x", e->key[1]);
+    else snprintf(s, sizeof(s), "To %02x, from %02x", e->key[0], e->key[1]);
+  } else {
+    snprintf(s, sizeof(s), "Data %02x %02x %02x %02x", e->key[0], e->key[1], e->key[2], e->key[3]);
+  }
+  drawRow(3, false, s);
+
+  int hop = lastHop(*e);
+  if (hop >= 0) {
+    c = the_mesh.lookupContactByPubKey(&e->path[(e->hops - 1) * e->hash_size], min((int)e->hash_size, 4));
+    if (c) snprintf(s, sizeof(s), "Via %s", c->name); else snprintf(s, sizeof(s), "Via %02x", hop);
+    drawRow(4, false, s);
+  }
+  snprintf(s, sizeof(s), "Hash %02x%02x%02x%02x", e->hash[0], e->hash[1], e->hash[2], e->hash[3]);
+  drawRow(5, false, s, NULL, C_DIM);
+  drawHints("` back");
+}
+
+static void drawStats() {
+  RadioStats st = client.stats();
+  char s[COLS + 1];
+  uint32_t all = st.rx + st.rx_err;
+  snprintf(s, sizeof(s), "RX %u  CRC err %u (%.1f%%)", (unsigned)st.rx, (unsigned)st.rx_err,
+           all ? st.rx_err * 100.0f / all : 0.0f);
+  drawRow(0, false, s);
+  snprintf(s, sizeof(s), "Flood  in %-6u out %u", (unsigned)st.rx_flood, (unsigned)st.tx_flood);
+  drawRow(1, false, s);
+  snprintf(s, sizeof(s), "Direct in %-6u out %u", (unsigned)st.rx_direct, (unsigned)st.tx_direct);
+  drawRow(2, false, s);
+  uint32_t window, air_1h = client.txAirLastHour(window);
+  float ms = max(1UL, (unsigned long)st.at);
+  snprintf(s, sizeof(s), "Air TX %.1f%% 1h %.1f%% RX %.0f%%", st.tx_air * 100.0f / ms,
+           air_1h * 100.0f / max(1UL, (unsigned long)window), st.rx_air * 100.0f / ms);
+  drawRow(3, false, s);
+  snprintf(s, sizeof(s), "Rptrs %d  NF %d  heap %uK", client.repeatersHeard(), radio_driver.getNoiseFloor(),
+           (unsigned)(ESP.getFreeHeap() / 1024));
+  drawRow(4, false, s);
+  uint32_t up = st.at / 60000;
+  snprintf(s, sizeof(s), "Loop max %ums  for %uh%02um", (unsigned)loop_max_ms, (unsigned)(up / 60),
+           (unsigned)(up % 60));
+  drawRow(5, false, s);
+  drawHints("R reset         , / page");
+}
+
+static int rssiY(int dbm) { return constrain(RSSI_BOT - (dbm - RSSI_MIN), RSSI_TOP, RSSI_BOT); }
+
+static void drawRssi() {
+  char s[COLS + 1];
+  int nf = radio_driver.getNoiseFloor();
+  int now = rssi_count ? rssi_hist[(rssi_head + SCR_W - 1) % SCR_W] : 0;
+  snprintf(s, sizeof(s), "RSSI %4d  NF %4d dBm", now, nf);
+  drawRow(0, false, s);
+  for (int x = SCR_W - rssi_count; x < SCR_W; x++) {   // newest on the right
+    int i = (rssi_head + x) % SCR_W;
+    bool pkt = rssi_pkt[i / 8] & (1 << (i % 8));
+    int y = rssiY(rssi_hist[i]);
+    canvas.drawFastVLine(x, y, RSSI_BOT - y + 1, pkt ? C_FG : C_DIM);
+  }
+  if (nf) for (int x = 0; x < SCR_W; x += 4) canvas.drawPixel(x, rssiY(nf), C_FG);
+  drawHints("bright = packet  , / page");
+}
+
+static void drawTest() {
+  drawStatus(TP_TITLES[test_page]);
+  if (!radio_ok) {
+    drawRow(1, false, "No radio.", NULL, C_ALERT);
+    drawHints("");
+    return;
+  }
+  if (test_page == TP_PACKETS) drawPackets();
+  else if (test_page == TP_STATS) drawStats();
+  else drawRssi();
+}
+
+static void keyTest(const Key& k) {
+  if (k.code == K_LEFT || k.code == K_RIGHT) {
+    test_page = (test_page + TP_COUNT + (k.code == K_RIGHT ? 1 : -1)) % TP_COUNT;
+    sel = top = 0;
+    rssi_count = 0;
+    return;
+  }
+  if (test_page == TP_PACKETS) {
+    int n = min(client.pktTotal(), (uint32_t)PKT_LOG_SIZE);
+    listMove(sel, top, n, k);
+    if (k.code == K_ENTER && n > 0) {
+      pkt_open = client.pktTotal() - 1 - sel;
+      screen = S_PACKET;   // not go(): the list keeps its cursor
+    }
+  } else if (test_page == TP_STATS && k.code == K_CHAR && (k.ch == 'r' || k.ch == 'R')) {
+    client.resetStats();
+    loop_max_ms = 0;
+    toast("Counters reset");
+  }
+}
+
+static void keyPacket(const Key& k) {
+  if (k.code == K_BACK) screen = S_TEST;
+}
+
+bool screenTick() {   // RSSI page: sample 10x a second while it's on screen
+  if (screen != S_TEST || test_page != TP_RSSI || !radio_ok) return false;
+  uint32_t t = millis();
+  if (t - rssi_at < 100) return false;
+  rssi_at = t;
+  bool pkt = radio_driver.getPacketsRecv() != rssi_rx;
+  rssi_rx = radio_driver.getPacketsRecv();
+  int prev = rssi_count ? rssi_hist[(rssi_head + SCR_W - 1) % SCR_W] : RSSI_MIN;
+  int v = pkt ? (int)radio_driver.getLastRSSI()
+              : radio_driver.isInRecvMode() ? (int)radio_driver.getCurrentRSSI() : prev;   // no reading while TX
+  rssi_hist[rssi_head] = constrain(v, -128, 0);
+  if (pkt) rssi_pkt[rssi_head / 8] |= 1 << (rssi_head % 8);
+  else rssi_pkt[rssi_head / 8] &= ~(1 << (rssi_head % 8));
+  rssi_head = (rssi_head + 1) % SCR_W;
+  if (rssi_count < SCR_W) rssi_count++;
+  return true;
+}
+
 // ================================================================ settings
 
 enum { SET_NAME, SET_REGION, SET_FREQ, SET_BW, SET_SF, SET_CR, SET_TX, SET_HASH, SET_AUTOADD, SET_OVERWRITE,
-       SET_BT, SET_PIN, SET_BRIGHT, SET_THEME, SET_SCREEN, SET_BEEP, SET_TZ, SET_CLOCK, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
+       SET_BT, SET_PIN, SET_BRIGHT, SET_THEME, SET_SCREEN, SET_BEEP, SET_TEST, SET_TZ, SET_CLOCK, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
 static const float BWS[] = { 7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500 };
 #define NUM_BWS (int)(sizeof(BWS) / sizeof(BWS[0]))
 static const char* ADD_LABELS[NUM_ADD_MODES] = { "chat+rpt", "all", "chat", "off" };   // ADD_* order
@@ -871,6 +1076,7 @@ static void drawSettings() {
         else snprintf(v, sizeof(v), "< %ds >", SCREEN_OFF_SECS[prefs.screen_off]);
         break;
       case SET_BEEP:    label = "Beep"; strcpy(v, prefs.beep ? "< on >" : "< off >"); break;
+      case SET_TEST:    label = "Test tab"; strcpy(v, prefs.test_tab ? "< on >" : "< off >"); break;
       case SET_TZ:      label = "Time zone"; snprintf(v, sizeof(v), "< UTC%+d >", prefs.tz_hours); break;
       case SET_CLOCK: {
         static const char* SRC[] = { "Clock", "Clock (mesh)", "Clock (set)", "Clock (gps)", "Clock (app)" };
@@ -945,6 +1151,7 @@ ui_prefs:   // the device's own settings
     case SET_THEME:  prefs.theme = (prefs.theme + NUM_THEMES + d) % NUM_THEMES; themeApply(); break;
     case SET_SCREEN: prefs.screen_off = (prefs.screen_off + 6 + d) % 6; break;
     case SET_BEEP:   prefs.beep = !prefs.beep; break;
+    case SET_TEST:   prefs.test_tab = !prefs.test_tab; break;
     case SET_TZ:     prefs.tz_hours = constrain(prefs.tz_hours + d, -12, 14); break;
     default: return;
   }
@@ -966,6 +1173,8 @@ void screenDraw() {
     case S_CONTACT:   drawContact(); break;
     case S_RADIO:     drawRadio(); break;
     case S_SETTINGS:  drawSettings(); break;
+    case S_TEST:      drawTest(); break;
+    case S_PACKET:    drawPacket(); break;
   }
 }
 
@@ -974,13 +1183,13 @@ void screenKey(const Key& k) {
 
   // tab switching: Tab cycles, digits jump (Fn+digit in a chat). Not while onboarding or editing a field.
   if (prefs.onboarded && screen != S_EDIT) {
-    int cur = -1;
-    for (int i = 0; i < 5; i++) if (TABS[i] == screen) cur = i;
+    int tabs = prefs.test_tab ? 6 : 5, cur = -1;
+    for (int i = 0; i < tabs; i++) if (TABS[i] == screen) cur = i;
     if (k.code == K_TAB) {
-      go(TABS[(cur + 1) % 5]);
+      go(TABS[(cur + 1) % tabs]);
       return;
     }
-    if (k.code == K_CHAR && k.ch >= '1' && k.ch <= '5' && (k.fn || !typing)) {
+    if (k.code == K_CHAR && k.ch >= '1' && k.ch < '1' + tabs && (k.fn || !typing)) {
       go(TABS[k.ch - '1']);
       return;
     }
@@ -1003,6 +1212,8 @@ void screenKey(const Key& k) {
     case S_CONTACT:   keyContact(k); break;
     case S_RADIO:     keyRadio(k); break;
     case S_SETTINGS:  keySettings(k); break;
+    case S_TEST:      keyTest(k); break;
+    case S_PACKET:    keyPacket(k); break;
   }
   if (screen != S_REGION) from_settings = false;
 }

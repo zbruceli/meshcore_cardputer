@@ -20,6 +20,22 @@ struct SentAck { uint32_t ack, sender_ts; uint8_t conv[CONV_ID_LEN]; };
 #define MAX_RPT_SNR       32   // last SNR of packets repeaters sent us directly (keyed by path hash)
 struct RptSnr { uint8_t hash[3]; uint8_t len; int8_t snr4; uint32_t at; };
 
+// test tab: the last packets in and out, and counters since the last reset
+#define PKT_LOG_SIZE      32
+#define PKT_LOG_PATH      8    // path bytes kept per packet
+struct PktLog {
+  uint32_t at;              // our clock
+  uint8_t  type;            // PAYLOAD_TYPE_*
+  uint8_t  tx;              // 1 = sent by us (or the app)
+  uint8_t  flood;           // route type flood (else direct)
+  uint8_t  hops, hash_size, len;
+  int8_t   snr4, rssi;      // received packets only
+  uint8_t  path[PKT_LOG_PATH];
+  uint8_t  key[4];          // advert: sender's public key prefix; else the first payload bytes (dest/src hashes)
+  uint8_t  hash[4];         // packet hash (same at every hop)
+};
+struct RadioStats { uint32_t rx, rx_err, tx, rx_flood, rx_direct, tx_flood, tx_direct, tx_air, rx_air, at; };
+
 struct Discovered { uint8_t pub_key[PUB_KEY_SIZE]; int8_t snr_in4, snr_out4; uint32_t at; };   // SNR x4
 
 // Auto-add choices, as the app's "Auto Add" settings (NodePrefs manual_add_contacts / autoadd_config)
@@ -46,11 +62,17 @@ class ChatClient : public MyMesh::Listener {
   bool echo_wait_tx = false;
   RptSnr rpt_snr[MAX_RPT_SNR];
   int rpt_snr_next = 0;
+  PktLog pkt_log[PKT_LOG_SIZE];
+  uint32_t pkt_total = 0;
+  RadioStats stats_base = {};
+  uint32_t air_min[60];      // TX airtime total at each of the last 60 minutes (for the last-hour share)
+  uint32_t air_min_count = 0, air_min_at = 0;
   int32_t clock_votes[4];   // (heard timestamp - uptime secs) of recent adverts/messages
   uint8_t vote_src[4];      // who sent each one (pubkey byte / sender name hash)
   int num_votes = 0;
 
   void noteRepeaterSnr(const uint8_t* hash, uint8_t len, float snr);
+  void logPacket(mesh::Packet& pkt, int len, bool tx, float snr);
   void clockVote(uint32_t ts, uint8_t src);
   void sendDMAttempt(Msg& m, ContactInfo& to);
   void checkDMRetries();
@@ -70,6 +92,14 @@ public:
 
   void loop();
   void logStatus();   // one serial line: radio counters, heap
+
+  // test tab
+  uint32_t pktTotal() const { return pkt_total; }
+  const PktLog* pktBySeq(uint32_t seq) const;   // NULL once overwritten
+  RadioStats stats();    // counters since resetStats()
+  void resetStats();
+  uint32_t txAirLastHour(uint32_t& window_ms);
+  int repeatersHeard();
 
   // node settings, shared with the phone app
   NodePrefs& node() { return *the_mesh.getNodePrefs(); }
@@ -111,6 +141,7 @@ public:
   uint32_t now() { return the_mesh.getRTCClock()->getCurrentTime(); }
 };
 
+extern const char* const PKT_TYPES[16];   // payload type names
 extern ChatClient client;
 extern DataStore store;
 extern MultiSerialInterface interface_manager;   // the phone app link (Bluetooth)

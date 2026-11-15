@@ -18,6 +18,7 @@ MultiSerialInterface interface_manager;
 SerialBLEInterface bluetooth_interface;
 
 bool radio_ok = false;
+uint32_t loop_max_ms = 0;
 
 // Before v0.3 our own files held the node settings, contacts and channels: copy them over once.
 static void migrateOldData() {
@@ -81,6 +82,7 @@ void setup() {
 }
 
 void loop() {
+  uint32_t loop_start = millis();
   // Nothing is received or transmitted until onboarding has picked a legal region.
   if (radio_ok && prefs.onboarded) {
     the_mesh.loop();
@@ -111,5 +113,7 @@ void loop() {
   }
 
   storeLoop();
-  uiLoop();
+  bool display_off = uiLoop();
+  loop_max_ms = max(loop_max_ms, (uint32_t)(millis() - loop_start));
+  delay(display_off ? 20 : 5);
 }

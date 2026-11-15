@@ -281,7 +281,7 @@ void uiBegin() {
   wake();
 }
 
-void uiLoop() {
+bool uiLoop() {
   M5Cardputer.update();
   uint32_t t = millis();
 
@@ -320,6 +320,7 @@ void uiLoop() {
     seen_seq = msg_seq;
     dirty = true;
   }
+  if (disp != DISP_OFF && screenTick()) dirty = true;   // live screens (test tab)
 
   if (t - last_tick > 500) {   // clock, signal, cursor blink
     last_tick = t;
@@ -338,5 +339,5 @@ void uiLoop() {
   }
 
   powerTick();
-  delay(disp == DISP_OFF ? 20 : 5);
+  return disp == DISP_OFF;
 }

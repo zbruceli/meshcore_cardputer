@@ -28,6 +28,7 @@ struct Prefs {
   uint8_t overwrite;        // (migration only) contacts full: replace the oldest non-favourite
   uint8_t ble_off;          // 1 = Bluetooth (phone app link) disabled
   uint8_t theme;            // index into THEMES (colour scheme), 0 = amber
+  uint8_t test_tab;         // 1 = show the 6 TST tab (packets, stats, RSSI)
 };
 
 extern Prefs prefs;

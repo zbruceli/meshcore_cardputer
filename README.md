@@ -17,6 +17,8 @@ and repeaters.
 | **3 RPT** repeaters: discovery replies, SNR in/out | **4 RAD** radio: frequency, signal, packet counts |
 | ![Settings](docs/screens/settings.png) | ![Setup](docs/screens/setup_region.png) |
 | **5 SET** settings, incl. Bluetooth and app PIN | First-boot setup: pick your region |
+| ![Test: packets](docs/screens/test_packets.png) | ![Test: RSSI](docs/screens/test_rssi.png) |
+| **6 TST** (optional): live packet log | **6 TST**: live RSSI graph, packets bright |
 
 ## Features
 
@@ -67,6 +69,8 @@ If the computer doesn't see it: power switch **off**, hold **G0** while plugging
 - **2 CON:** type to filter. In a contact: `Enter` message, `F` favourite, `R` reset path, `S` share, `X` delete.
 - **3 RPT:** `D` asks nearby repeaters to reply (60 s).
 - **4 RAD:** `Enter` flood advert, `Z` zero-hop advert.
+- **6 TST** (turn on with **Test tab** in SET): `,` `/` switch pages. Packets: last 32 in and out, `Enter` for
+  path, sender and repeater. Stats: counters, CRC errors, airtime, `R` resets. RSSI: live signal graph (24 s).
 - **5 SET:** `,` `/` change, `Enter` edit. **Colours** picks a scheme (see below). Factory reset needs `Enter`
   twice.
 
