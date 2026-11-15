@@ -38,7 +38,7 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
   since reset (CRC errors, flood/direct, airtime incl. last hour, loop time, heap), live RSSI graph. Receive only.
 - **Settings:** region or manual radio parameters, TX power, path hash size, auto-add, Bluetooth on/off and app
   PIN, brightness, colour scheme, screen timeout, beep, test tab, GPS clock, time zone, clock, factory reset.
-- **Clock:** no RTC chip: GPS (optional; RMC only until two fixes agree, then silent, re-sync every 6 h) → phone
+- **Clock:** no RTC chip: GPS (optional; RMC only until two fixes agree, then standby, re-sync every 6 h; in standby when off) → phone
   app → two agreeing mesh senders → manual. `--:--` until set.
 - **Phone app:** the official MeshCore app pairs as with any companion radio (`MeshCore-<name>`, 6-digit PIN,
   random each boot unless set from the app); shares contacts, channels and node settings. Messages sent from one

@@ -83,8 +83,20 @@ void gpsBegin() {
   gpsOutput(false);   // silent until gpsApply() (Settings > GPS)
 }
 
-// The module is always powered and streams every NMEA sentence by default. Keep only RMC (all we parse) while
-// we want the time, and nothing at all otherwise.
+// The module has no power-enable pin and tracks (~30 mA) whenever it's awake, even with its output off. CASIC
+// standby stops the receiver; it wakes when the time is up or on any serial command, prints its start-up banner,
+// keeps its settings and has a hot fix within a few seconds.
+void gpsStandby(uint32_t secs) {
+  char body[24], s[32];
+  snprintf(body, sizeof(body), "PCAS12,%u", (unsigned)secs);
+  uint8_t cs = 0;
+  for (const char* p = body; *p; p++) cs ^= *p;
+  snprintf(s, sizeof(s), "$%s*%02X\r\n", body, cs);
+  Serial1.print(s);
+}
+
+// Streams every NMEA sentence by default. Keep only RMC (all we parse) while we want the time, and nothing at
+// all otherwise.
 // CASIC PCAS03 fields: GGA,GLL,GSA,GSV,RMC,VTG,ZDA,ANT,DHV,LPS,,,UTC,GST. Not saved on the module.
 void gpsOutput(bool rmc) {
   Serial1.print(rmc ? "$PCAS03,0,0,0,0,1,0,0,0,0,0,,,0,0*03\r\n" : "$PCAS03,0,0,0,0,0,0,0,0,0,0,,,0,0*02\r\n");
@@ -117,15 +129,20 @@ static uint32_t parseRmc(const char* s) {
   return mktime(&t);      // no TZ is set, so this is UTC
 }
 
-uint32_t gpsReadTime() {
+uint32_t gpsReadTime(bool* woke) {
   static char line[96];
   static int len = 0;
   uint32_t found = 0;
+  *woke = false;
   while (Serial1.available()) {
     char c = Serial1.read();
     if (c == '\n' || c == '\r') {
       line[len] = 0;
-      if (len > 0) { uint32_t t = parseRmc(line); if (t) found = t; }
+      if (len > 0) {
+        uint32_t t = parseRmc(line);
+        if (t) found = t;
+        else if (strncmp(line + 3, "TXT,", 4) == 0 && strstr(line, ",MA=")) *woke = true;   // "$GPTXT,..,MA=CASGN"
+      }
       len = 0;
     } else if (len < (int)sizeof(line) - 1) {
       line[len++] = c;

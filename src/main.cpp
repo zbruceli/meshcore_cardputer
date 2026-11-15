@@ -46,32 +46,46 @@ void bluetoothApply() {   // on only once onboarded (no app-driven TX before a r
   else interface_manager.disableBluetooth();
 }
 
-// GPS clock (Settings > GPS): the module streams only RMC (time + fix flag, ~70 bytes/s) until two valid fixes
-// a second apart agree, sets the clock, then goes silent until the next re-sync. The module itself is always
-// powered (no enable pin), so "off" only stops its output. GPS time beats the phone app and the mesh.
-#define GPS_RESYNC_MILLIS (6 * 3600000UL)   // the RTC drifts ~0.1 s an hour
+// GPS clock (Settings > GPS). The module has no power switch, so whenever it isn't needed it sits in standby,
+// which saves ~30 mA (a fifth of the idle draw). With the setting on it streams only RMC (time + fix flag) until
+// two valid fixes a second apart agree, sets the clock, then sleeps 6 h; waking up by itself starts the re-sync.
+// Any command wakes it early, so each wake-up (its start-up banner) re-sends what the current state wants.
+// GPS time beats the phone app and the mesh.
+#define GPS_SLEEP_SECS 21600   // 6 h; the RTC drifts ~0.1 s an hour
 uint8_t gps_state = GPS_OFF;
 static uint32_t gps_fix_at, gps_last;
+
+static void gpsSleep() {
+  gpsOutput(false);
+  gpsStandby(GPS_SLEEP_SECS);
+}
 
 void gpsApply() {
   gps_state = prefs.gps ? GPS_SEARCH : GPS_OFF;
   gps_last = 0;
-  gpsOutput(prefs.gps);
+  if (prefs.gps) gpsOutput(true);   // wakes it if asleep; the banner that follows re-sends this
+  else gpsSleep();
 }
 
 static void gpsLoop() {
-  uint32_t t = gpsReadTime();   // also drains anything the module sent
-  if (gps_state == GPS_SEARCH && t >= CLOCK_SANE_MIN) {
+  bool woke;
+  uint32_t t = gpsReadTime(&woke);   // also drains anything the module sent
+  if (woke) {
+    if (Serial) Serial.println("GPS awake");
+    if (gps_state == GPS_FIX) gps_state = GPS_SEARCH;   // the 6 h standby ran out: re-sync
+    gps_last = 0;
+    if (gps_state == GPS_OFF) gpsSleep(); else gpsOutput(true);
+  } else if (gps_state == GPS_SEARCH && t >= CLOCK_SANE_MIN) {
     if (gps_last && t - gps_last >= 1 && t - gps_last <= 2) {
       client.setClock(t, CLOCK_GPS);
       if (Serial) Serial.printf("GPS clock set: %u\n", (unsigned)t);
-      gpsOutput(false);
+      gpsSleep();
       gps_state = GPS_FIX;
       gps_fix_at = millis();
     }
     gps_last = t;
-  } else if (gps_state == GPS_FIX && millis() - gps_fix_at > GPS_RESYNC_MILLIS) {
-    gpsApply();
+  } else if (gps_state == GPS_FIX && millis() - gps_fix_at > (GPS_SLEEP_SECS + 600) * 1000UL) {
+    gpsApply();   // never heard it wake: try again
   }
 }
 

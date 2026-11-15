@@ -32,11 +32,16 @@ Ranked by importance against effort. Every release must pass the upgrade rules i
 | 2 | ✅ **Colour schemes:** 7 four-colour themes (amber default, green, VFD cyan, red, blue LCD, classic LCD, paper) | High, visible | ½–1 day |
 | 3 | ✅ **GPS clock setting:** `GPS clock < off / on >`, RMC only, silent after fix, re-sync every 6 h | Medium: clock without mesh or app | ½–1 day |
 | 4 | ✅ **Test tab, part 1:** hidden `6 TST` tab, live packet log, stats, RSSI graph (no TX) | High for field use and support | 1½ days |
-| 5 | **Low battery and power off:** warning, cut-off, deep sleep on long G0 press, wake on G0 | High | 1 day |
-| 6 | **Test tab, part 2:** hear-me (zero-hop), echo test on `#test`, trace path, SDR burst | Medium-high | 1½ days |
-| 7 | **Light sleep** with the screen off, wake on LoRa DIO1 / keyboard (G11); measure ≥ 24 h idle, no missed messages | High, but riskiest (BLE, radio IRQ) | 2–3 days |
-| 8 | **GPS location:** fix on RAD, optional location in adverts | Low-medium | ½ day after #3 |
-| 9 | **Known limitations:** app-sent messages missing from device history (and back); BLE name updates only after reboot | Low-medium | 1 day, needs engine hooks |
+| 5 | ✅ **GPS standby:** the GPS drew ~30 mA even with GPS clock off; now in CASIC standby (`$PCAS12`) when off and for 6 h between re-syncs. Screen-off idle 150 → 120 mA (meter) | High: ~+25 % battery for everyone | ½ day |
+| 6 | **Low battery and power off:** warning, cut-off, deep sleep on long G0 press, wake on G0 | High | 1 day |
+| 7 | **Light sleep** with the screen off, wake on LoRa DIO1 / keyboard (G11); measured 150 → ~40 mA possible; Bluetooth-off case first; measure ≥ 24 h idle, no missed messages | High, but riskiest (BLE, radio IRQ) | 2–3 days |
+| 8 | **Test tab, part 2:** hear-me (zero-hop), echo test on `#test`, trace path, SDR burst | Medium-high | 1½ days |
+| 9 | **GPS location:** fix on RAD, optional location in adverts | Low-medium | ½ day after #3 |
+| 10 | **Known limitations:** app-sent messages missing from device history (and back); BLE name updates only after reboot | Low-medium | 1 day, needs engine hooks |
+
+Power audit (2026-11-14, USB meter at 5 V, battery switched out): screen on 200 mA, screen off 150 mA, GPS
+standby −30 mA, light sleep floor 60 mA (GPS awake); Bluetooth, speaker codec and RX gain each < 10 mA. To confirm
+in hours: a battery run-down test.
 
 **Later (only if asked for):** repeater login and status, room servers, QR contact sharing, SD message export.
 

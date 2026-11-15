@@ -37,5 +37,8 @@ extern SensorManager sensors;
 bool radio_init();
 void gpsBegin();
 void gpsOutput(bool rmc);   // true: RMC once a second, false: GPS module silent
-uint32_t gpsReadTime();   // UTC epoch once a valid RMC sentence (fix) arrives, else 0. Position is ignored for now.
+void gpsStandby(uint32_t secs);   // receiver off (~30 mA saved) until the time is up or any command wakes it
+// UTC epoch once a valid RMC sentence (fix) arrives, else 0. Position is ignored for now. *woke is set when the
+// module's start-up banner arrives (power-on, or out of standby).
+uint32_t gpsReadTime(bool* woke);
 mesh::LocalIdentity radio_new_identity();
