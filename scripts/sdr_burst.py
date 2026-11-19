@@ -14,6 +14,10 @@ Raw IQ:  add --save-iq DIR to keep each burst as DIR/<label>-<time>-<n>.cu8 (~2 
 Plot:    python3 scripts/sdr_burst.py --plot DIR/*.cu8 --out bursts.png   (needs matplotlib; same --offset/--rate)
 
 Lower --gain until no burst is flagged CLIP; keep it fixed for every device in a session.
+
+Frequency: foff = mean offset from the channel centre, drift = start-to-end change within one burst (bursts of
+40 ms or more). The dongle's own error shifts every foff equally, so measure a TCXO device first and read the
+summary's foff "vs first" column. LoRa tolerates roughly +-BW/4 (+-15 kHz at 62.5 kHz).
 """
 import argparse
 import csv
@@ -27,6 +31,8 @@ BLOCK_MS = 1                  # power is measured per 1 ms block
 CHUNK = 1 << 18               # samples per read (~0.26 s at 1.024 MS/s)
 START_DB, END_DB = 10, 6      # burst starts this far above the noise floor, ends when it drops below END_DB
 MIN_BURST_MS, END_HOLD_MS = 5, 3
+MIN_DRIFT_MS = 40             # shorter bursts get no drift figure
+CSV_FIELDS = ["label", "time", "dur_ms", "mean_dbfs", "peak_dbfs", "snr_db", "foff_hz", "clip", "drift_hz"]
 PRE_MS = 20                   # --save-iq keeps this much noise before each burst
 RING_S = 4                    # seconds of raw samples kept for --save-iq (longest MeshCore packet is ~1.5 s)
 
@@ -101,6 +107,10 @@ class BurstMeter:
         core = b[2:-2] if len(b) > 8 else b          # skip the PA ramp at either end
         pw = np.array([v[0] for v in core])
         lin = 10 ** (pw / 10)
+        cent = np.array([v[1] for v in core])
+        # drift: start-to-end change of a straight-line fit through the per-block centroids (needs a few dozen
+        # symbols; a single 1 ms centroid swings with the chirp, the fit averages that out)
+        drift = int(np.polyfit(np.arange(len(cent)), cent, 1)[0] * len(cent)) if len(cent) >= MIN_DRIFT_MS else ""
         r = {
             "label": self.a.label,
             "time": time.strftime("%H:%M:%S"),
@@ -108,18 +118,20 @@ class BurstMeter:
             "mean_dbfs": round(10 * np.log10(lin.mean()), 2),
             "peak_dbfs": round(float(pw.max()), 2),
             "snr_db": round(10 * np.log10(lin.mean()) - fl, 1),
-            "foff_hz": int(np.mean([v[1] for v in core])),
+            "foff_hz": int(cent.mean()),
             "clip": int(self.clip > 0.001),
+            "drift_hz": drift,
         }
         self.results.append(r)
+        d = f"  drift {drift:+6d} Hz" if drift != "" else ""
         print(f"{r['time']}  {r['label']:<16} {r['dur_ms']:5d} ms  {r['mean_dbfs']:7.2f} dBFS  "
-              f"snr {r['snr_db']:5.1f} dB  foff {r['foff_hz']:+6d} Hz{'  CLIP' if r['clip'] else ''}", flush=True)
+              f"snr {r['snr_db']:5.1f} dB  foff {r['foff_hz']:+6d} Hz{d}{'  CLIP' if r['clip'] else ''}", flush=True)
         if self.a.save_iq:
             self.save(r, end)
         if self.a.csv:
             new = not os.path.exists(self.a.csv)
             with open(self.a.csv, "a", newline="") as fh:
-                w = csv.DictWriter(fh, fieldnames=list(r))
+                w = csv.DictWriter(fh, fieldnames=CSV_FIELDS)
                 if new:
                     w.writeheader()
                 w.writerow(r)
@@ -222,14 +234,20 @@ def summary(rows):
     by = {}
     for r in rows:
         by.setdefault(r["label"], []).append(r)
-    ref = None
-    print(f"\n{'label':<16} {'n':>3} {'median dBFS':>12} {'spread':>7} {'vs first':>9} {'dur ms':>7} {'foff Hz':>8} clip")
+    ref = fref = None
+    # "vs first" columns compare against the first label (use a TCXO device): that cancels the dongle's own error
+    print(f"\n{'label':<16} {'n':>3} {'median dBFS':>12} {'spread':>7} {'vs first':>9} {'dur ms':>7} "
+          f"{'foff Hz':>8} {'vs first':>9} {'drift Hz':>9} clip")
     for label, rs in by.items():
         p = np.array([float(r["mean_dbfs"]) for r in rs])
         med = float(np.median(p))
         ref = med if ref is None else ref
+        fo = int(np.median([int(r["foff_hz"]) for r in rs]))
+        fref = fo if fref is None else fref
+        dr = [int(r["drift_hz"]) for r in rs if r.get("drift_hz") not in (None, "")]   # older CSVs have none
+        drs = f"{int(np.median(dr)):+9d}" if dr else f"{'-':>9}"
         print(f"{label:<16} {len(rs):3d} {med:12.2f} {p.max() - p.min():7.2f} {med - ref:+9.2f} "
-              f"{int(np.median([int(r['dur_ms']) for r in rs])):7d} {int(np.median([int(r['foff_hz']) for r in rs])):+8d} "
+              f"{int(np.median([int(r['dur_ms']) for r in rs])):7d} {fo:+8d} {fo - fref:+9d} {drs} "
               f"{sum(int(r['clip']) for r in rs)}")
 
 
@@ -258,6 +276,11 @@ def main():
         with open(a.compare) as fh:
             summary(list(csv.DictReader(fh)))
         return
+    if a.csv and os.path.exists(a.csv):
+        with open(a.csv) as fh:
+            head = fh.readline().strip().split(",")
+        if head != CSV_FIELDS:
+            sys.exit(f"{a.csv} has older columns ({len(head)}); use a new --csv file")
     m = BurstMeter(a)
     try:
         for x, clip in (chunks_from_file(a) if a.iq_file else chunks_from_sdr(a)):
