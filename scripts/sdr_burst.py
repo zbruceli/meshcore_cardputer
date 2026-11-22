@@ -22,7 +22,9 @@ summary's foff "vs first" column. LoRa tolerates roughly +-BW/4 (+-15 kHz at 62.
 import argparse
 import csv
 import os
+import queue
 import sys
+import threading
 import time
 
 import numpy as np
@@ -35,6 +37,7 @@ MIN_DRIFT_MS = 40             # shorter bursts get no drift figure
 CSV_FIELDS = ["label", "time", "dur_ms", "mean_dbfs", "peak_dbfs", "snr_db", "foff_hz", "clip", "drift_hz"]
 PRE_MS = 20                   # --save-iq keeps this much noise before each burst
 RING_S = 4                    # seconds of raw samples kept for --save-iq (longest MeshCore packet is ~1.5 s)
+QUEUE_CHUNKS = 120            # ~30 s of reads may wait for processing
 
 
 def lowpass_taps(rate, cutoff, n=129):
@@ -150,9 +153,13 @@ class BurstMeter:
         print(f"  saved {path}", flush=True)
 
 
-def read_cu8(path):
-    u = np.fromfile(path, np.uint8).astype(np.float32)
+def iq_from_u8(u):
+    u = u.astype(np.float32)
     return (((u[0::2] - 127.5) + 1j * (u[1::2] - 127.5)) / 127.5).astype(np.complex64)
+
+
+def read_cu8(path):
+    return iq_from_u8(np.fromfile(path, np.uint8))
 
 
 def plot(a):
@@ -212,22 +219,44 @@ def chunks_from_sdr(a):
     sdr.gain = a.gain
     print(f"tuned {sdr.center_freq / 1e6:.4f} MHz (channel {a.freq / 1e6:.4f} MHz at +{a.offset / 1e3:.0f} kHz), "
           f"{sdr.sample_rate / 1e6:.3f} MS/s, gain {sdr.gain} dB, ppm {a.ppm}", file=sys.stderr)
-    sdr.read_samples(CHUNK)   # discard the first read (settling)
+    # The dongle has to be read all the time or it drops samples: a thread only copies into a queue.
+    q = queue.Queue(QUEUE_CHUNKS)
+    stop, overflow = threading.Event(), threading.Event()
+
+    def on_read(buf, _):
+        if stop.is_set():
+            sdr.cancel_read_async()   # cancelled from here: it fails (and closes the device) if not yet streaming
+            return
+        try:
+            q.put_nowait(bytes(buf))
+        except queue.Full:
+            overflow.set()
+
+    reader = threading.Thread(target=sdr.read_bytes_async, args=(on_read, 2 * CHUNK), daemon=True)
+    reader.start()
     try:
+        q.get(timeout=5)              # discard the first read (settling)
         while True:
-            x = sdr.read_samples(CHUNK).astype(np.complex64)
+            raw = np.frombuffer(q.get(timeout=5), np.uint8)
+            if overflow.is_set():
+                overflow.clear()
+                print("WARNING: processing fell behind, samples were lost", file=sys.stderr)
+            x = iq_from_u8(raw)
             yield x, float(np.mean((np.abs(x.real) > 0.99) | (np.abs(x.imag) > 0.99)))
+    except queue.Empty:
+        sys.exit("no samples from the RTL-SDR for 5 s (unplugged?)")
     finally:
-        sdr.close()
+        stop.set()
+        reader.join(3)
+        if not reader.is_alive():     # closing under a running read crashes librtlsdr
+            sdr.close()
 
 
 def chunks_from_file(a):
     raw = np.fromfile(a.iq_file, np.uint8)
     for i in range(0, len(raw) - 1, 2 * CHUNK):
-        u = raw[i:i + 2 * CHUNK].astype(np.float32)
-        x = ((u[0::2] - 127.5) + 1j * (u[1::2] - 127.5)) / 127.5
-        clip = float(np.mean((raw[i:i + 2 * CHUNK] == 0) | (raw[i:i + 2 * CHUNK] == 255)))
-        yield x.astype(np.complex64), clip
+        u = raw[i:i + 2 * CHUNK]
+        yield iq_from_u8(u), float(np.mean((u == 0) | (u == 255)))
 
 
 def summary(rows):
@@ -282,11 +311,14 @@ def main():
         if head != CSV_FIELDS:
             sys.exit(f"{a.csv} has older columns ({len(head)}); use a new --csv file")
     m = BurstMeter(a)
+    chunks = chunks_from_file(a) if a.iq_file else chunks_from_sdr(a)
     try:
-        for x, clip in (chunks_from_file(a) if a.iq_file else chunks_from_sdr(a)):
+        for x, clip in chunks:
             m.feed(x, clip)
     except KeyboardInterrupt:
         pass
+    finally:
+        chunks.close()                # stops the reader thread before the interpreter exits
     if m.results:
         summary(m.results)
     else:
