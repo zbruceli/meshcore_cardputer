@@ -26,8 +26,9 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
   868–923 MHz, none preselected. **Nothing is transmitted before setup completes.** Confirm sends an advert.
 - **Messages:** one inbox for channels and DMs, newest activity first, unread counts. Channels: Public, `#hashtag`
   (key = first 16 bytes of `sha256("#name")`, lowercased), private (name + 16/32-byte key); max 8. DMs: `[..]`
-  `[ok]` `[x]`, 3 attempts (the last floods). Channel sends show `[heard N]` repeater echoes. 96 messages kept;
-  when full, the busiest conversation loses its oldest. Beep and toast for new messages.
+  `[ok]` `[x]`, 3 attempts (the last floods). Channel sends show `[heard N]` repeater echoes. Quick replies: up
+  to 8 saved texts (edited in settings), offered by `Enter` on an empty compose line. 96 messages kept; when
+  full, the busiest conversation loses its oldest. Beep and toast for new messages.
 - **Contacts:** auto-added from adverts by type (default chat + repeaters, MeshCore's advice), overwrite oldest
   when full (favourites kept), un-added adverts listed with `+`; favourite, delete, reset path, share, filter.
   Max 100. Lists sort favourites first, then by latest message or advert.
@@ -37,7 +38,7 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
 - **Test tab** (`6 TST`, off by default): last 32 packets in/out with details (path, sender, last repeater), counters
   since reset (CRC errors, flood/direct, airtime incl. last hour, loop time, heap), live RSSI graph. Receive only.
 - **Settings:** region or manual radio parameters, TX power, path hash size, auto-add, Bluetooth on/off and app
-  PIN, brightness, colour scheme, screen timeout, beep, test tab, GPS clock, time zone, clock, factory reset.
+  PIN, brightness, colour scheme, screen timeout, beep, quick replies, test tab, GPS clock, time zone, clock, factory reset.
 - **Clock:** no RTC chip: GPS (optional; RMC only until two fixes agree, then standby, re-sync every 6 h; in standby when off) → phone
   app → two agreeing mesh senders → manual. `--:--` until set.
 - **Phone app:** the official MeshCore app pairs as with any companion radio (`MeshCore-<name>`, 6-digit PIN,

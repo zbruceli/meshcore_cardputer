@@ -78,6 +78,40 @@ void prefsSave() {
   if (!writeFile("/prefs", &prefs, sizeof(prefs))) Serial.println("prefs save failed");
 }
 
+// ---- quick replies ----
+
+char quick[QUICK_COUNT][QUICK_LEN];
+static const char* QUICK_DEFAULTS[QUICK_COUNT] = {
+  "OK", "Yes", "No", "Thanks!", "On my way", "Running late", "Where are you?", "All good here"
+};
+
+int quickCount() {
+  int n = 0;
+  while (n < QUICK_COUNT && quick[n][0]) n++;
+  return n;
+}
+
+void quickLoad() {
+  recoverFile("/quick");
+  if (readFile("/quick", quick, sizeof(quick))) {
+    for (int i = 0; i < QUICK_COUNT; i++) quick[i][QUICK_LEN - 1] = 0;
+    return;
+  }
+  memset(quick, 0, sizeof(quick));
+  for (int i = 0; i < QUICK_COUNT; i++) StrHelper::strncpy(quick[i], QUICK_DEFAULTS[i], QUICK_LEN);
+}
+
+void quickSave() {
+  int n = 0;   // pack: drop the gaps left by removed replies
+  for (int i = 0; i < QUICK_COUNT; i++) {
+    if (!quick[i][0]) continue;
+    if (i != n) memcpy(quick[n], quick[i], QUICK_LEN);
+    n++;
+  }
+  for (int i = n; i < QUICK_COUNT; i++) memset(quick[i], 0, QUICK_LEN);
+  if (!writeFile("/quick", quick, sizeof(quick))) Serial.println("quick save failed");
+}
+
 // ---- contacts ----
 
 struct ContactRec {   // on-flash form of ContactInfo (minus the cached shared secret)

@@ -162,8 +162,23 @@ s.row(2, "14:05 me [ok]", color=DIM)
 s.row(3, "Yes, works with the app too")
 s.row(4, "14:06 me [..]", color=DIM)
 s.compose(5, "")
-s.hints("ENT send  Fn;. scroll ` back")
+s.hints("ENT quick Fn;. scroll ` back")
 s.save("dm")
+
+s = Screen()   # quick replies: Enter on an empty compose line
+s.status("@Alice")
+for r, t in enumerate(["OK", "Yes", "No", "Thanks!", "On my way", "Running late"]):
+    s.row(r, "%d %s" % (r + 1, t), sel=(r == 4))
+s.hints("ENT use   1-8 pick   ` back")
+s.save("quick")
+
+s = Screen()   # SET > Quick replies
+s.status("SET Replies")
+for r, t in enumerate(["1 Thanks!", "2 On my way", "3 Running late", "4 Where are you?", "5 At the trailhead",
+                       "6 All good here"]):
+    s.row(r, t, sel=(r == 4))
+s.hints("ENT edit  Del x2 remove ` back")
+s.save("quick_set")
 
 s = Screen()   # 2 CON contacts
 s.status("2 CON")

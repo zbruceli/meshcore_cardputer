@@ -111,6 +111,7 @@ void setup() {
   the_mesh.begin();
   migrateOldData();
   msgsLoad();
+  quickLoad();
 
   // as MeshCore does on boards with a screen: a random PIN each boot (shown in settings), unless the app set one
   if (client.node().ble_pin == 0) the_mesh.setBLEPin(fast_rng.nextInt(100000, 999999));

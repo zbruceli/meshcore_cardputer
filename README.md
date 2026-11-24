@@ -19,12 +19,14 @@ and repeaters.
 | **5 SET** settings, incl. Bluetooth and app PIN | First-boot setup: pick your region |
 | ![Test: packets](docs/screens/test_packets.png) | ![Test: RSSI](docs/screens/test_rssi.png) |
 | **6 TST** (optional): live packet log | **6 TST**: live RSSI graph, packets bright |
+| ![Quick replies](docs/screens/quick.png) | ![Edit quick replies](docs/screens/quick_set.png) |
+| Quick replies: `Enter` on an empty line | Edit them in SET > **Quick replies** |
 
 ## Features
 
 - **Setup without a phone:** region → name → time zone → on air. Nothing is sent before a region is chosen.
 - **Messages:** Public, `#hashtag` and private channels, direct messages with delivery marks (`[..]` `[ok]`
-  `[x]`) and retries, `@[name]` replies, unread counts, beep.
+  `[x]`) and retries, `@[name]` replies, quick replies, unread counts, beep.
 - **Contacts and repeaters:** auto-added from adverts, favourites, share, filter by typing, repeater discovery
   with SNR both ways. Lists sort by latest activity.
 - **Phone app over Bluetooth:** same contacts, channels and radio settings as the keyboard; both work at once.
@@ -65,7 +67,9 @@ If the computer doesn't see it: power switch **off**, hold **G0** while plugging
 | `Enter` / `` ` `` / `Del` | Select or send / back / delete |
 | G0 button | Send an advert (announce yourself) |
 
-- **Chat:** just type; `Enter` sends. `Fn+R` in a channel starts a reply to the latest sender.
+- **Chat:** just type; `Enter` sends. `Fn+R` in a channel starts a reply to the latest sender. `Enter` on an
+  empty line lists your quick replies: `1`–`8` (or arrows and `Enter`) puts one in the compose line, `Enter`
+  sends it. Edit them in SET > **Quick replies** (`Enter` edit, `Del` twice remove).
 - **1 MSG:** `A` add a channel (`#name`, or a name then its key), `X` twice to leave or delete.
 - **2 CON:** type to filter. In a contact: `Enter` message, `F` favourite, `R` reset path, `S` share, `X` delete.
 - **3 RPT:** `D` asks nearby repeaters to reply (60 s).

@@ -36,8 +36,9 @@ Ranked by importance against effort. Every release must pass the upgrade rules i
 | 6 | **Low battery and power off:** warning, cut-off, deep sleep on long G0 press, wake on G0 | High | 1 day |
 | 7 | **Light sleep** with the screen off, wake on LoRa DIO1 / keyboard (G11); measured 150 → ~40 mA possible; Bluetooth-off case first; measure ≥ 24 h idle, no missed messages | High, but riskiest (BLE, radio IRQ) | 2–3 days |
 | 8 | **Test tab, part 2:** hear-me (zero-hop), echo test on `#test`, trace path, SDR burst | Medium-high | 1½ days |
-| 9 | **GPS location:** fix on RAD, optional location in adverts | Low-medium | ½ day after #3 |
-| 10 | **Known limitations:** app-sent messages missing from device history (and back); BLE name updates only after reboot | Low-medium | 1 day, needs engine hooks |
+| 9 | ✅ **Quick replies:** 8 saved messages; `Enter` on an empty compose line lists them, `1`–`8` puts one in the compose line, `Enter` sends; edited in SET > Quick replies; stored in `/quick`. Cheap stand-in for voice input, which doesn't fit on this board | Medium: fast one-handed replies | 1 day |
+| 10 | **GPS location:** fix on RAD, optional location in adverts | Low-medium | ½ day after #3 |
+| 11 | **Known limitations:** app-sent messages missing from device history (and back); BLE name updates only after reboot | Low-medium | 1 day, needs engine hooks |
 
 Power audit (2026-11-14, USB meter at 5 V, battery switched out): screen on 200 mA, screen off 150 mA, GPS
 standby −30 mA, light sleep floor 60 mA (GPS awake); Bluetooth, speaker codec and RX gain each < 10 mA. To confirm

@@ -37,6 +37,15 @@ void prefsDefaults();
 void prefsLoad();
 void prefsSave();
 
+// ---- quick replies (/quick: QUICK_COUNT x QUICK_LEN raw chars, frozen layout; absent = defaults) ----
+
+#define QUICK_COUNT 8
+#define QUICK_LEN   48        // incl. the terminating 0
+extern char quick[QUICK_COUNT][QUICK_LEN];   // used ones packed at the front, the rest empty
+int  quickCount();
+void quickLoad();
+void quickSave();             // packs, then saves
+
 // pre-v0.3 contact / channel files, read once to migrate into the companion engine; false if absent
 bool contactsLoad(BaseChatMesh& mesh);
 bool channelsLoad(BaseChatMesh& mesh);

@@ -17,6 +17,8 @@ static int reply_back;                 // Fn+R: how many distinct senders back t
 static bool from_settings;             // region screen opened from SET
 static bool armed;                     // destructive key pressed once, press again to confirm
 static char filter[16];                // contacts: typed name filter
+static bool picking;                   // chat: quick-reply list shown instead of the history
+static int quick_edit;                 // quick reply being edited (quickCount() = a new one)
 
 void go(Screen s) {
   screen = s;
@@ -33,6 +35,7 @@ static void openChat(const uint8_t conv[], Screen back) {
   chat_back = back;
   chat_scroll = 0;
   reply_back = 0;
+  picking = false;
   input[0] = 0;
   screen = S_CHAT;
 }
@@ -60,7 +63,7 @@ static void openChannel(int idx, Screen back) {
 
 // ================================================================ text editor (name, channel, frequency, clock)
 
-enum { F_NAME, F_CH_NAME, F_CH_KEY, F_FREQ, F_CLOCK };
+enum { F_NAME, F_CH_NAME, F_CH_KEY, F_FREQ, F_CLOCK, F_QUICK };
 struct EditField { const char* title; const char* prompt; const char* help; uint8_t max_len; };
 static const EditField FIELDS[] = {
   { "SET Name",      "Your name on the mesh:",       "Others see this name.",    31 },
@@ -68,6 +71,7 @@ static const EditField FIELDS[] = {
   { "Add channel",   "Secret key (base64 or hex):",  "16 or 32 byte key",        64 },
   { "SET Frequency", "Frequency in MHz:",            "868.000 to 923.000",       10 },
   { "SET Clock",     "Local date and time:",         "YYYY-MM-DD HH:MM",         16 },
+  { "Quick reply",   "Quick reply text:",            "Empty removes it.",        QUICK_LEN - 1 },
 };
 static int edit_field;
 static Screen edit_back;
@@ -149,6 +153,12 @@ static void keyEditEnter() {
       toast("Radio retuned");
       break;
     }
+
+    case F_QUICK:
+      if (quick_edit >= quickCount() && !input[0]) break;   // empty new reply: nothing to add
+      StrHelper::strncpy(quick[quick_edit], input, QUICK_LEN);
+      quickSave();
+      break;
 
     case F_CLOCK: {
       int y, mo, d, h, mi;
@@ -443,11 +453,25 @@ static void markConvRead() {
   if (marked) msgsChanged();
 }
 
+// Quick replies: Enter on an empty compose line lists them in place of the history; one goes into the compose
+// line (still editable), Enter again sends it.
+static void drawQuickPick() {
+  int n = quickCount();
+  listMove(sel, top, n, Key{K_NONE});
+  for (int r = 0; r < BODY_ROWS && top + r < n; r++) {
+    char s[COLS + 1];
+    snprintf(s, sizeof(s), "%d %s", top + r + 1, quick[top + r]);
+    drawRow(r, top + r == sel, s);
+  }
+  drawHints("ENT use   1-8 pick   ` back");
+}
+
 static void drawChat() {
   char title[34];
   convName(title, sizeof(title), cur_conv);
   markConvRead();
   drawStatus(title);
+  if (picking) { drawQuickPick(); return; }
   int compose = inputRows(input, 3);   // compose line grows up to 3 rows, history gets the rest
   const int visible = BODY_ROWS - compose;
   int n = buildChatLines(visible + chat_scroll);
@@ -458,7 +482,10 @@ static void drawChat() {
   }
   if (n == 0) drawRow(1, false, "No messages yet.", NULL, C_DIM);
   drawInput(visible, input, compose);
-  drawHints(cur_conv[0] == CONV_CHANNEL ? "ENT send  Fn+R @  Fn;. scroll" : "ENT send  Fn;. scroll ` back");
+  const char* ent = input[0] ? "ENT send " : "ENT quick";
+  char hint[COLS + 1];
+  snprintf(hint, sizeof(hint), cur_conv[0] == CONV_CHANNEL ? "%s Fn+R @  Fn;. scroll" : "%s Fn;. scroll ` back", ent);
+  drawHints(hint);
 }
 
 // Puts "@[sender] " (the MeshCore apps' mention format) in front of the compose line. Each press goes one
@@ -488,9 +515,29 @@ static void mentionSender(int max_len) {
   reply_back++;
 }
 
+static void keyQuickPick(const Key& k, int max_len) {
+  int n = quickCount();
+  Key m = k;   // ; and . move without Fn: nothing is being typed here
+  if (k.code == K_CHAR && !k.fn && k.ch == ';') m.code = K_UP;
+  if (k.code == K_CHAR && !k.fn && k.ch == '.') m.code = K_DOWN;
+  listMove(sel, top, n, m);
+  int pick = -1;
+  if (m.code == K_ENTER) pick = sel;
+  else if (m.code == K_CHAR && !k.fn && k.ch >= '1' && k.ch < '1' + n) pick = k.ch - '1';
+  else if (m.code == K_BACK) picking = false;
+  else if (m.code == K_CHAR || m.code == K_DEL) {   // typing instead: close the list, keep the key
+    picking = false;
+    editText(input, max_len, k);
+  }
+  if (pick < 0) return;
+  StrHelper::strncpy(input, quick[pick], max_len + 1);
+  picking = false;
+}
+
 static void keyChat(const Key& k) {
   bool is_channel = cur_conv[0] == CONV_CHANNEL;
   int max_len = is_channel ? MAX_TEXT_LEN - strlen(client.node().node_name) - 2 : MAX_TEXT_LEN;
+  if (picking) { keyQuickPick(k, max_len); return; }
   if (is_channel && k.code == K_CHAR && k.fn && (k.ch == 'r' || k.ch == 'R')) {
     mentionSender(max_len);
     return;
@@ -500,7 +547,10 @@ static void keyChat(const Key& k) {
   if (k.code == K_UP) chat_scroll++;
   else if (k.code == K_DOWN && chat_scroll > 0) chat_scroll--;
   else if (k.code == K_BACK) go(chat_back);
-  else if (k.code == K_ENTER && input[0]) {
+  else if (k.code == K_ENTER && !input[0]) {
+    if (quickCount()) { picking = true; sel = top = 0; }
+    else toast("No quick replies: see SET");
+  } else if (k.code == K_ENTER) {
     if (is_channel) {
       int idx = client.channelByConv(cur_conv);
       if (idx < 0 || !client.sendChannel(idx, input)) toast("Send failed");
@@ -1029,10 +1079,49 @@ bool screenTick() {   // RSSI page: sample 10x a second while it's on screen
   return true;
 }
 
+// settings rows (the quick-reply list returns to its row)
+enum { SET_NAME, SET_REGION, SET_FREQ, SET_BW, SET_SF, SET_CR, SET_TX, SET_HASH, SET_AUTOADD, SET_OVERWRITE,
+       SET_BT, SET_PIN, SET_BRIGHT, SET_THEME, SET_SCREEN, SET_BEEP, SET_QUICK, SET_TEST, SET_TZ, SET_CLOCK, SET_GPS, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
+
+// ================================================================ quick replies (from SET)
+
+static void drawQuick() {
+  int n = quickCount(), rows = n < QUICK_COUNT ? n + 1 : n;   // + "Add" row while there's room
+  listMove(sel, top, rows, Key{K_NONE});
+  drawStatus("SET Replies");
+  for (int r = 0; r < BODY_ROWS && top + r < rows; r++) {
+    int i = top + r;
+    char s[COLS + 1];
+    if (i == n) { drawRow(r, i == sel, "+ Add reply", NULL, i == sel ? C_FG : C_DIM); continue; }
+    if (i == sel && armed) { drawRow(r, true, "Del again to remove", NULL, C_ALERT); continue; }
+    snprintf(s, sizeof(s), "%d %s", i + 1, quick[i]);
+    drawRow(r, i == sel, s);
+  }
+  drawHints(sel < n ? "ENT edit  Del x2 remove ` back" : "ENT add   ` back");
+}
+
+static void keyQuick(const Key& k) {
+  int n = quickCount(), rows = n < QUICK_COUNT ? n + 1 : n;
+  listMove(sel, top, rows, k);
+  if (k.code != K_DEL) armed = false;
+  if (k.code == K_BACK) {
+    go(S_SETTINGS);
+    sel = SET_QUICK;
+    listMove(sel, top, SET_COUNT, Key{K_NONE});
+  } else if (k.code == K_ENTER) {
+    quick_edit = sel;
+    startEdit(F_QUICK, sel < n ? quick[sel] : "", S_QUICK);
+  } else if (k.code == K_DEL && sel < n) {
+    if (!armed) { armed = true; return; }
+    quick[sel][0] = 0;
+    quickSave();
+    armed = false;
+    toast("Reply removed");
+  }
+}
+
 // ================================================================ settings
 
-enum { SET_NAME, SET_REGION, SET_FREQ, SET_BW, SET_SF, SET_CR, SET_TX, SET_HASH, SET_AUTOADD, SET_OVERWRITE,
-       SET_BT, SET_PIN, SET_BRIGHT, SET_THEME, SET_SCREEN, SET_BEEP, SET_TEST, SET_TZ, SET_CLOCK, SET_GPS, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
 static const float BWS[] = { 7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500 };
 #define NUM_BWS (int)(sizeof(BWS) / sizeof(BWS[0]))
 static const char* ADD_LABELS[NUM_ADD_MODES] = { "chat+rpt", "all", "chat", "off" };   // ADD_* order
@@ -1076,6 +1165,7 @@ static void drawSettings() {
         else snprintf(v, sizeof(v), "< %ds >", SCREEN_OFF_SECS[prefs.screen_off]);
         break;
       case SET_BEEP:    label = "Beep"; strcpy(v, prefs.beep ? "< on >" : "< off >"); break;
+      case SET_QUICK:   label = "Quick replies"; snprintf(v, sizeof(v), "%d", quickCount()); break;
       case SET_TEST:    label = "Test tab"; strcpy(v, prefs.test_tab ? "< on >" : "< off >"); break;
       case SET_TZ:      label = "Time zone"; snprintf(v, sizeof(v), "< UTC%+d >", prefs.tz_hours); break;
       case SET_CLOCK: {
@@ -1119,6 +1209,9 @@ static void keySettings(const Key& k) {
         go(S_REGION);
         sel = prefs.region < NUM_PRESETS ? prefs.region : 0;
         listMove(sel, top, NUM_PRESETS, Key{K_NONE});
+        return;
+      case SET_QUICK:
+        go(S_QUICK);
         return;
       case SET_RESET:
         if (armed) storeWipe();
@@ -1179,6 +1272,7 @@ void screenDraw() {
     case S_SETTINGS:  drawSettings(); break;
     case S_TEST:      drawTest(); break;
     case S_PACKET:    drawPacket(); break;
+    case S_QUICK:     drawQuick(); break;
   }
 }
 
@@ -1218,6 +1312,7 @@ void screenKey(const Key& k) {
     case S_SETTINGS:  keySettings(k); break;
     case S_TEST:      keyTest(k); break;
     case S_PACKET:    keyPacket(k); break;
+    case S_QUICK:     keyQuick(k); break;
   }
   if (screen != S_REGION) from_settings = false;
 }

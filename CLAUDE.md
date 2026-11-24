@@ -27,7 +27,8 @@ priorities.
 - Phone app over BLE (`SerialBLEInterface` + `MultiSerialInterface`), wired as in companion_radio's `main.cpp`.
   BLE costs ~100 KB heap (~104 KB free after boot).
 - SPIFFS: engine files `/identity`, `/prefs.json` (NodePrefs: name, radio, auto-add, BLE PIN; shared with the app),
-  `/contacts3`, `/channels2`, `/bl/<key>`; UI files `/prefs` (UI settings, onboarded, region label), `/msgs`.
+  `/contacts3`, `/channels2`, `/bl/<key>`; UI files `/prefs` (UI settings, onboarded, region label), `/msgs`,
+  `/quick` (quick replies).
   The pre-v0.3 `/contacts`, `/channels` and `/prefs` radio fields are only read once to migrate.
 
 ## Layout
@@ -104,6 +105,7 @@ channels and messages; only an explicit erase or factory reset may lose them.
   change: either would wipe or orphan user data.
 - `/prefs` is a raw struct: only **append** fields at the end (shorter files keep defaults), never reorder, resize or
   reuse one. Never bump `PREFS_VERSION`: `prefsLoad()` resets everything on a mismatch.
+- `/quick` is 8 × 48 raw chars: frozen too (absent = defaults).
 - `/msgs` is raw `Msg` records with no header: `Msg`'s layout is frozen. A new layout goes to a new file
   (`/msgs2`) read from `/msgs` once, as the pre-v0.3 migration does.
 - Migrations: run once at boot, idempotent, write the new file before relying on it, keep the old file, never write
