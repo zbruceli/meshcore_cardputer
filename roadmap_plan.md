@@ -60,13 +60,20 @@ in hours: a battery run-down test.
    exchange messages, change settings (brightness, time zone, Bluetooth, auto-add), pair the phone app.
 2. Flash the new release **without erasing**, using the web installer and M5Burner.
 3. Check: same identity (My ID), name, region and radio settings, contacts, channels, message history, UI settings,
-   phone app still paired with the same PIN behaviour. Then a fresh-erase install still onboards.
+   phone app connects (after re-pairing, see below) with the same PIN behaviour. Then a fresh-erase install still
+   onboards.
+
+v0.3.2 → v0.4.0 (2026-11-24, esptool at 0x0, release images): all data files byte-identical, settings kept. The
+phone pairing is lost: the merged image fills 0x9000–0xDFFF (NVS, where the Bluetooth bonds live) with 0xFF, so every
+upgrade since v0.3.0 needs re-pairing. Fix candidate: web installer writes the parts separately (skips NVS);
+M5Burner takes one image at 0x0, so it keeps the re-pair note.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
 | An upgrade loses user data | Upgrade rules in `CLAUDE.md`; upgrade test above; keep migration code for every released format |
+| An upgrade drops the phone pairing (merged image wipes NVS) | README tells users to re-pair; split-part web installer would keep it |
 | RAM (no PSRAM; Bluetooth takes ~100 KB) | Fixed-size arrays; check free heap after each change |
 | Weak link indoors: repeaters often can't hear us | Not the firmware (SDR: TX matches a T-Deck); test by a window or outdoors |
 | MeshCore API or file-format churn | Commit pinned; bump deliberately, re-test with the app and the upgrade test |

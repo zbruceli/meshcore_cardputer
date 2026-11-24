@@ -57,7 +57,8 @@ shows `RADIO FAIL: check LoRa Cap`.
 - **esptool**: `esptool.py --chip esp32s3 write_flash 0x0 meshcore-cardputer-vX.Y.Z.bin`
 
 All of them write a merged image at `0x0`, replacing whatever was on the device (including a launcher). Updates
-keep your identity, contacts and messages unless you erase. Afterwards switch the Cardputer off and on; the first
+keep your identity, contacts and messages unless you erase. The phone app has to pair again after an update: on the
+phone, forget `MeshCore-<name>` in Bluetooth settings, then connect with the PIN from 5 SET. Afterwards switch the Cardputer off and on; the first
 boot after a fresh install takes about 25 s while storage is set up.
 If the computer doesn't see it: power switch **off**, hold **G0** while plugging in USB, release after 2–3 s.
 
