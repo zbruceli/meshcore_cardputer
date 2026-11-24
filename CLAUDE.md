@@ -83,8 +83,9 @@ pio device monitor            # serial log (115200)
 python3 scripts/render_screens.py   # README screenshots (docs/screens/) from demo data, same layout as ui.cpp
 ```
 
-Release: bump `FW_VERSION` (and `FIRMWARE_VERSION`) in `platformio.ini`, commit, push tag `v<FW_VERSION>`; the
-release workflow builds the `.bin`, attaches it to a GitHub Release and publishes `web/` to GitHub Pages.
+Release: bump `FW_VERSION` (and `FIRMWARE_VERSION`) in `platformio.ini`, write `docs/release-notes/v<FW_VERSION>.md`,
+commit, push tag `v<FW_VERSION>`; the release workflow builds the `.bin`, attaches it to a GitHub Release (the
+notes file above the generated changelog) and publishes `web/` to GitHub Pages.
 Installer-page changes alone: `web/` changes on `main` (or a manual run) republish via `pages.yml` with the latest
 release's `.bin`.
 

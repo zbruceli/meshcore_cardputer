@@ -15,6 +15,9 @@ Scope is in `PRD.md`, code and rules in `CLAUDE.md`.
   at once on shared contacts, channels and settings. Lists sort by latest activity. Channel echoes `[heard N]`.
 - **v0.3.1 / v0.3.2 ✅:** boots without the Cap (`RADIO FAIL`), startup screen during first-boot formatting,
   pinned M5Unified/M5GFX. Web installer on GitHub Pages; listed on [M5Burner](https://burner.m5stack.com/U3W4DS).
+- **v0.4.0 ✅:** items 1–5, 9 and 10 below: safe saves, colour schemes, GPS clock and location, GPS standby, test tab,
+  quick replies. Released after indoor device checks; the hillside field test and the M5Burner upgrade path
+  are still to do.
 
 Checks: ✅ DMs both ways with `[ok]` (T-Deck Plus) · ✅ app on the same device sends/receives on channels ·
 ✅ settings and data survive reboots · ✅ ~104 KB heap free with Bluetooth on · ✅ TX power matches a T-Deck
