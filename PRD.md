@@ -38,9 +38,13 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
 - **Test tab** (`6 TST`, off by default): last 32 packets in/out with details (path, sender, last repeater), counters
   since reset (CRC errors, flood/direct, airtime incl. last hour, loop time, heap), live RSSI graph. Receive only.
 - **Settings:** region or manual radio parameters, TX power, path hash size, auto-add, Bluetooth on/off and app
-  PIN, brightness, colour scheme, screen timeout, beep, quick replies, test tab, GPS clock, time zone, clock, factory reset.
-- **Clock:** no RTC chip: GPS (optional; RMC only until two fixes agree, then standby, re-sync every 6 h; in standby when off) → phone
-  app → two agreeing mesh senders → manual. `--:--` until set.
+  PIN, brightness, colour scheme, screen timeout, beep, quick replies, test tab, GPS mode, my location, location
+  in adverts, time zone, clock, factory reset.
+- **GPS:** off / clock / location. Runs only in short sessions (GGA + RMC), standby otherwise: clock = two agreeing
+  fixes, every 6 h; location = 3 agreeing fixes with HDOP ≤ 2 (or the best after 20 s), every 10 min, used as the
+  node's location (adverts only if shared; saved after a ~50 m move). "My location" from a chat or SET gets a fresh
+  fix in any mode. No fix: give up after 90–180 s, retry in 30 min. Contacts with a location show distance/direction.
+- **Clock:** no RTC chip: GPS → phone app → two agreeing mesh senders → manual. `--:--` until set.
 - **Phone app:** the official MeshCore app pairs as with any companion radio (`MeshCore-<name>`, 6-digit PIN,
   random each boot unless set from the app); shares contacts, channels and node settings. Messages sent from one
   side don't appear in the other's history; incoming ones show on both.

@@ -167,9 +167,10 @@ s.save("dm")
 
 s = Screen()   # quick replies: Enter on an empty compose line
 s.status("@Alice")
-for r, t in enumerate(["OK", "Yes", "No", "Thanks!", "On my way", "Running late"]):
-    s.row(r, "%d %s" % (r + 1, t), sel=(r == 4))
-s.hints("ENT use   1-8 pick   ` back")
+for r, t in enumerate(["3 No", "4 Thanks!", "5 On my way", "6 Running late", "7 Where are you?",
+                       "0 My location (GPS)"]):
+    s.row(r, t, sel=(r == 5))
+s.hints("ENT use   0-8 pick   ` back")
 s.save("quick")
 
 s = Screen()   # SET > Quick replies
@@ -192,7 +193,7 @@ s.save("contacts")
 s = Screen()   # contact details
 s.status("Alice")
 for r, (k, v) in enumerate([("Name", "Alice"), ("Type", "Chat *fav"), ("ID", "a3f19c27e0b4d812"),
-                            ("Path", "direct"), ("Heard", "now"), ("GPS", "37.7749,-122.4194")]):
+                            ("Path", "direct"), ("Heard", "now"), ("GPS", "2.3km NE 37.775,-122.419")]):
     s.row(r, k, v)
 s.hints("ENT msg F fav R rst S shr Xdel")
 s.save("contact")

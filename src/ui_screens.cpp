@@ -19,6 +19,8 @@ static bool armed;                     // destructive key pressed once, press ag
 static char filter[16];                // contacts: typed name filter
 static bool picking;                   // chat: quick-reply list shown instead of the history
 static int quick_edit;                 // quick reply being edited (quickCount() = a new one)
+static bool loc_wait;                  // chat: waiting for a GPS fix to add "my location" to the compose line
+static uint32_t loc_prev;              // gps_pos.at when the fix was asked for
 
 void go(Screen s) {
   screen = s;
@@ -36,6 +38,7 @@ static void openChat(const uint8_t conv[], Screen back) {
   chat_scroll = 0;
   reply_back = 0;
   picking = false;
+  loc_wait = false;
   input[0] = 0;
   screen = S_CHAT;
 }
@@ -455,15 +458,38 @@ static void markConvRead() {
 
 // Quick replies: Enter on an empty compose line lists them in place of the history; one goes into the compose
 // line (still editable), Enter again sends it.
+// The last row, "0 My location" (0 after 9, as on a phone keypad), adds a fresh GPS position.
 static void drawQuickPick() {
   int n = quickCount();
-  listMove(sel, top, n, Key{K_NONE});
-  for (int r = 0; r < BODY_ROWS && top + r < n; r++) {
+  listMove(sel, top, n + 1, Key{K_NONE});
+  for (int r = 0; r < BODY_ROWS && top + r <= n; r++) {
+    int i = top + r;
     char s[COLS + 1];
-    snprintf(s, sizeof(s), "%d %s", top + r + 1, quick[top + r]);
-    drawRow(r, top + r == sel, s);
+    if (i == n) strcpy(s, "0 My location (GPS)");
+    else snprintf(s, sizeof(s), "%d %s", i + 1, quick[i]);
+    drawRow(r, i == sel, s);
   }
-  drawHints("ENT use   1-8 pick   ` back");
+  drawHints("ENT use   0-8 pick   ` back");
+}
+
+static int chatMaxLen() {   // channel texts go out as "name: text"
+  return cur_conv[0] == CONV_CHANNEL ? MAX_TEXT_LEN - strlen(client.node().node_name) - 2 : MAX_TEXT_LEN;
+}
+
+// "geo:" URI (RFC 5870): phones open it in a map app; ~ = rough accuracy
+static void addLocation() {
+  char s[48];
+  snprintf(s, sizeof(s), "%sgeo:%.5f,%.5f ~%um", input[0] && input[strlen(input) - 1] != ' ' ? " " : "",
+           gps_pos.lat, gps_pos.lon, gps_pos.acc_m);
+  int room = chatMaxLen() - strlen(input);
+  if (room > 0) strncat(input, s, room);
+}
+
+static void pickLocation() {
+  gpsRequest();
+  if (!gps_req) { addLocation(); return; }   // the last fix is under a minute old
+  loc_wait = true;
+  loc_prev = gps_pos.at;
 }
 
 static void drawChat() {
@@ -484,7 +510,8 @@ static void drawChat() {
   drawInput(visible, input, compose);
   const char* ent = input[0] ? "ENT send " : "ENT quick";
   char hint[COLS + 1];
-  snprintf(hint, sizeof(hint), cur_conv[0] == CONV_CHANNEL ? "%s Fn+R @  Fn;. scroll" : "%s Fn;. scroll ` back", ent);
+  if (loc_wait) snprintf(hint, sizeof(hint), "GPS fix %3us %dsat    ` cancel", (unsigned)gpsSearchSecs(), gpsSats());
+  else snprintf(hint, sizeof(hint), cur_conv[0] == CONV_CHANNEL ? "%s Fn+R @  Fn;. scroll" : "%s Fn;. scroll ` back", ent);
   drawHints(hint);
 }
 
@@ -520,24 +547,27 @@ static void keyQuickPick(const Key& k, int max_len) {
   Key m = k;   // ; and . move without Fn: nothing is being typed here
   if (k.code == K_CHAR && !k.fn && k.ch == ';') m.code = K_UP;
   if (k.code == K_CHAR && !k.fn && k.ch == '.') m.code = K_DOWN;
-  listMove(sel, top, n, m);
+  listMove(sel, top, n + 1, m);
   int pick = -1;
   if (m.code == K_ENTER) pick = sel;
   else if (m.code == K_CHAR && !k.fn && k.ch >= '1' && k.ch < '1' + n) pick = k.ch - '1';
+  else if (m.code == K_CHAR && !k.fn && k.ch == '0') pick = n;
   else if (m.code == K_BACK) picking = false;
   else if (m.code == K_CHAR || m.code == K_DEL) {   // typing instead: close the list, keep the key
     picking = false;
     editText(input, max_len, k);
   }
   if (pick < 0) return;
-  StrHelper::strncpy(input, quick[pick], max_len + 1);
   picking = false;
+  if (pick == n) pickLocation();
+  else StrHelper::strncpy(input, quick[pick], max_len + 1);
 }
 
 static void keyChat(const Key& k) {
   bool is_channel = cur_conv[0] == CONV_CHANNEL;
-  int max_len = is_channel ? MAX_TEXT_LEN - strlen(client.node().node_name) - 2 : MAX_TEXT_LEN;
+  int max_len = chatMaxLen();
   if (picking) { keyQuickPick(k, max_len); return; }
+  if (loc_wait && k.code == K_BACK) { loc_wait = false; toast("Location cancelled"); return; }
   if (is_channel && k.code == K_CHAR && k.fn && (k.ch == 'r' || k.ch == 'R')) {
     mentionSender(max_len);
     return;
@@ -547,10 +577,10 @@ static void keyChat(const Key& k) {
   if (k.code == K_UP) chat_scroll++;
   else if (k.code == K_DOWN && chat_scroll > 0) chat_scroll--;
   else if (k.code == K_BACK) go(chat_back);
-  else if (k.code == K_ENTER && !input[0]) {
-    if (quickCount()) { picking = true; sel = top = 0; }
-    else toast("No quick replies: see SET");
-  } else if (k.code == K_ENTER) {
+  else if (k.code == K_ENTER && !input[0] && !loc_wait) {
+    picking = true;   // always has at least "My location"
+    sel = top = 0;
+  } else if (k.code == K_ENTER && input[0]) {
     if (is_channel) {
       int idx = client.channelByConv(cur_conv);
       if (idx < 0 || !client.sendChannel(idx, input)) toast("Send failed");
@@ -562,6 +592,7 @@ static void keyChat(const Key& k) {
     input[0] = 0;
     chat_scroll = 0;
     reply_back = 0;
+    loc_wait = false;   // sent without it
   }
 }
 
@@ -793,7 +824,19 @@ static void drawContact() {
   if (armed) {
     drawRow(5, true, "X again to delete", NULL, C_ALERT);
   } else if (c->gps_lat || c->gps_lon) {
-    snprintf(s, sizeof(s), "%.4f,%.4f", c->gps_lat / 1e6, c->gps_lon / 1e6);
+    double lat = c->gps_lat / 1e6, lon = c->gps_lon / 1e6, my_lat, my_lon;
+    if (myPosition(my_lat, my_lon)) {   // distance and compass direction from us
+      static const char* DIRS[] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+      double p1 = radians(my_lat), p2 = radians(lat), dl = radians(lon - my_lon);
+      double a = sq(sin((p2 - p1) / 2)) + cos(p1) * cos(p2) * sq(sin(dl / 2));
+      double km = 6371.0 * 2 * atan2(sqrt(a), sqrt(1 - a));
+      double brg = degrees(atan2(sin(dl) * cos(p2), cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)));
+      const char* dir = DIRS[(int)((brg + 360 + 22.5) / 45) % 8];
+      if (km < 1) snprintf(s, sizeof(s), "%dm %s %.3f,%.3f", (int)(km * 1000), dir, lat, lon);
+      else snprintf(s, sizeof(s), km < 100 ? "%.1fkm %s %.3f,%.3f" : "%.0fkm %s %.3f,%.3f", km, dir, lat, lon);
+    } else {
+      snprintf(s, sizeof(s), "%.4f,%.4f", lat, lon);
+    }
     drawRow(5, false, "GPS", s);
   }
   drawHints(c->type == ADV_TYPE_CHAT ? "ENT msg F fav R rst S shr Xdel" : "F fav  R reset  S share  X del");
@@ -1061,7 +1104,13 @@ static void keyPacket(const Key& k) {
   if (k.code == K_BACK) screen = S_TEST;
 }
 
-bool screenTick() {   // RSSI page: sample 10x a second while it's on screen
+bool screenTick() {
+  if (screen == S_CHAT && loc_wait) {   // "my location": add it once the fix arrives
+    if (gps_pos.at != loc_prev) { loc_wait = false; addLocation(); return true; }
+    if (!gps_req) { loc_wait = false; toast("No GPS fix: try outdoors"); return true; }
+    return false;
+  }
+  // RSSI page: sample 10x a second while it's on screen
   if (screen != S_TEST || test_page != TP_RSSI || !radio_ok) return false;
   uint32_t t = millis();
   if (t - rssi_at < 100) return false;
@@ -1081,7 +1130,7 @@ bool screenTick() {   // RSSI page: sample 10x a second while it's on screen
 
 // settings rows (the quick-reply list returns to its row)
 enum { SET_NAME, SET_REGION, SET_FREQ, SET_BW, SET_SF, SET_CR, SET_TX, SET_HASH, SET_AUTOADD, SET_OVERWRITE,
-       SET_BT, SET_PIN, SET_BRIGHT, SET_THEME, SET_SCREEN, SET_BEEP, SET_QUICK, SET_TEST, SET_TZ, SET_CLOCK, SET_GPS, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
+       SET_BT, SET_PIN, SET_BRIGHT, SET_THEME, SET_SCREEN, SET_BEEP, SET_QUICK, SET_TEST, SET_TZ, SET_CLOCK, SET_GPS, SET_MYLOC, SET_ADVLOC, SET_ID, SET_VERSION, SET_RESET, SET_COUNT };
 
 // ================================================================ quick replies (from SET)
 
@@ -1174,8 +1223,23 @@ static void drawSettings() {
         if (client.clockSynced()) fmtClock(v, sizeof(v)); else strcpy(v, "not set");
         break;
       }
-      case SET_GPS:     label = "GPS clock";
-        strcpy(v, gps_state == GPS_OFF ? "< off >" : gps_state == GPS_FIX ? "< on: fix >" : "< on: search >");
+      case SET_GPS: {
+        static const char* MODES[] = { "< off >", "< clock >", "< location >" };
+        label = "GPS";
+        strcpy(v, MODES[prefs.gps % 3]);
+        break;
+      }
+      case SET_MYLOC: {
+        double lat, lon;
+        label = "My location";
+        if (gps_state == GPS_SEARCH && (gps_req || prefs.gps == GPS_MODE_LOC))
+          snprintf(v, sizeof(v), "fix... %us %dsat", (unsigned)gpsSearchSecs(), gpsSats());
+        else if (myPosition(lat, lon)) snprintf(v, sizeof(v), "%.4f,%.4f", lat, lon);
+        else strcpy(v, "none");
+        break;
+      }
+      case SET_ADVLOC:  label = "Loc in adverts";
+        strcpy(v, np.advert_loc_policy == ADVERT_LOC_SHARE ? "< on >" : "< off >");
         break;
       case SET_ID:      label = "My ID"; mesh::Utils::toHex(v, client.selfPubKey(), 4); break;
       case SET_VERSION: label = "Firmware"; snprintf(v, sizeof(v), "v%s", FW_VERSION); break;
@@ -1213,6 +1277,10 @@ static void keySettings(const Key& k) {
       case SET_QUICK:
         go(S_QUICK);
         return;
+      case SET_MYLOC:
+        gpsRequest();
+        toast(gps_req ? "Getting a GPS fix" : "Location is up to date");
+        return;
       case SET_RESET:
         if (armed) storeWipe();
         armed = true;
@@ -1233,6 +1301,7 @@ static void keySettings(const Key& k) {
     case SET_HASH:   np.path_hash_mode = constrain(np.path_hash_mode + d, 0, 2); break;
     case SET_AUTOADD: client.setAddMode((client.addMode() + NUM_ADD_MODES + d) % NUM_ADD_MODES, client.overwrite()); return;
     case SET_OVERWRITE: client.setAddMode(client.addMode(), !client.overwrite()); return;
+    case SET_ADVLOC: np.advert_loc_policy = np.advert_loc_policy == ADVERT_LOC_SHARE ? ADVERT_LOC_NONE : ADVERT_LOC_SHARE; break;
     default: goto ui_prefs;
   }
   if (sel == SET_BW || sel == SET_SF || sel == SET_CR) { prefs.region = REGION_CUSTOM; prefsSave(); }
@@ -1248,7 +1317,7 @@ ui_prefs:   // the device's own settings
     case SET_SCREEN: prefs.screen_off = (prefs.screen_off + 6 + d) % 6; break;
     case SET_BEEP:   prefs.beep = !prefs.beep; break;
     case SET_TEST:   prefs.test_tab = !prefs.test_tab; break;
-    case SET_GPS:    prefs.gps = !prefs.gps; gpsApply(); break;
+    case SET_GPS:    prefs.gps = (prefs.gps + 3 + d) % 3; gpsApply(); break;
     case SET_TZ:     prefs.tz_hours = constrain(prefs.tz_hours + d, -12, 14); break;
     default: return;
   }

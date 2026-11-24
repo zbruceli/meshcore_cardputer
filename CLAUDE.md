@@ -53,9 +53,9 @@ src/ui_screens.cpp   per-screen draw()/key() + dispatch
   Arduino `Wire` is moved to the Grove port (SDA 2 / SCL 1).
 - Cap GPS ATGM336H-6N on UART1: ESP RX 15, TX 13, 115200 8N1. No power-enable pin: powered (~30 mA) and
   streaming NMEA unless told otherwise (`$PCAS03`). `$PCAS12,<s>` = standby (6 h accepted), wakes on timer or any
-  serial command, keeps settings, hot fix in ~4 s. In standby unless Settings > GPS clock is on and the clock
-  isn't set yet (RMC only); sleeps 6 h after a fix, its wake-up banner starts the re-sync (`gpsLoop()` in
-  main.cpp). Position is not used.
+  serial command, keeps settings, fix in ~4 s with a good sky view (20–40 s by a window). Runs only in sessions
+  (GGA + RMC) for the clock (6 h), location mode (10 min) or a "my location" request, standby otherwise; its
+  wake-up banner starts the next session (`gpsLoop()` in main.cpp). `prefs.gps` = off / clock / location.
 - SD card shares the LoRa SPI bus (CS 12, kept high). Don't drive G46 (not a Cap power enable, per newer ports).
 - "Not heard back" indoors is the location, not the firmware: RTL-SDR (`scripts/sdr_burst.py`) shows our TX within
   ~0.5 dB of a T-Deck Plus, which fails from the same spot too. On a hillside (v0.3.0) both pass the Bay Area health

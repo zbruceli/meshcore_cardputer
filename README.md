@@ -30,7 +30,10 @@ and repeaters.
 - **Contacts and repeaters:** auto-added from adverts, favourites, share, filter by typing, repeater discovery
   with SNR both ways. Lists sort by latest activity.
 - **Phone app over Bluetooth:** same contacts, channels and radio settings as the keyboard; both work at once.
-- **Clock:** from the GPS (turn on **GPS clock** in SET), the phone app or the mesh; or set it by hand.
+- **GPS** (SET > **GPS**: off / clock / location): sets the clock; in location mode a fresh position every 10 min.
+  Send your location from any chat, see distance and direction to contacts, optionally share it in adverts. The
+  GPS only runs for short fixes and sleeps otherwise.
+- **Clock:** from the GPS, the phone app or the mesh; or set it by hand.
 - **Radio and power:** region presets (868–923 MHz) or manual settings, airtime and noise floor, screen dims and
   sleeps when idle.
 - **Colour schemes:** amber (default), green phosphor, VFD cyan, red, blue LCD, classic LCD and paper.
@@ -69,15 +72,17 @@ If the computer doesn't see it: power switch **off**, hold **G0** while plugging
 
 - **Chat:** just type; `Enter` sends. `Fn+R` in a channel starts a reply to the latest sender. `Enter` on an
   empty line lists your quick replies: `1`–`8` (or arrows and `Enter`) puts one in the compose line, `Enter`
-  sends it. Edit them in SET > **Quick replies** (`Enter` edit, `Del` twice remove).
+  sends it. Edit them in SET > **Quick replies** (`Enter` edit, `Del` twice remove). The last one, `0` **My
+  location**, adds a `geo:` link with your GPS position (it waits for a fix if the last one is old; `` ` `` cancels).
 - **1 MSG:** `A` add a channel (`#name`, or a name then its key), `X` twice to leave or delete.
 - **2 CON:** type to filter. In a contact: `Enter` message, `F` favourite, `R` reset path, `S` share, `X` delete.
 - **3 RPT:** `D` asks nearby repeaters to reply (60 s).
 - **4 RAD:** `Enter` flood advert, `Z` zero-hop advert.
 - **6 TST** (turn on with **Test tab** in SET): `,` `/` switch pages. Packets: last 32 in and out, `Enter` for
   path, sender and repeater. Stats: counters, CRC errors, airtime, `R` resets. RSSI: live signal graph (24 s).
-- **5 SET:** `,` `/` change, `Enter` edit. **Colours** picks a scheme (see below). Factory reset needs `Enter`
-  twice.
+- **5 SET:** `,` `/` change, `Enter` edit. **Colours** picks a scheme (see below). **My location**: `Enter` gets
+  a fresh fix. **Loc in adverts** shares your position with the mesh (off by default; same setting as the phone
+  app). Factory reset needs `Enter` twice.
 
 **Phone app:** in the MeshCore app, connect to `MeshCore-<your name>` and enter the **App PIN** from 5 SET (new
 each boot). Messages you send from one side don't show in the other's history; incoming ones show on both.

@@ -147,6 +147,14 @@ extern ChatClient client;
 extern DataStore store;
 extern MultiSerialInterface interface_manager;   // the phone app link (Bluetooth)
 void bluetoothApply();   // on/off from prefs (main.cpp)
-enum { GPS_OFF, GPS_SEARCH, GPS_FIX };
+// GPS (main.cpp). prefs.gps: GPS_MODE_*. The receiver only runs for short sessions, in standby otherwise.
+enum { GPS_MODE_OFF, GPS_MODE_CLOCK, GPS_MODE_LOC };
+enum { GPS_OFF, GPS_SEARCH, GPS_FIX };   // standby / a session is running / standby until the next session
 extern uint8_t gps_state;
-void gpsApply();         // on/off from prefs (main.cpp)
+struct GpsPos { double lat, lon; uint16_t acc_m; uint32_t at; };   // at = UTC of the fix, 0 = none yet
+extern GpsPos gps_pos;
+extern bool gps_req;     // a position request (gpsRequest) is running
+void gpsApply();         // mode changed in settings
+void gpsRequest();       // get a fresh position now (unless the last one is under a minute old)
+uint32_t gpsSearchSecs();   // how long the current session has run
+bool myPosition(double& lat, double& lon);   // GPS fix, else the location set from the app; false if none

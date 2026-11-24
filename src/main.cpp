@@ -46,46 +46,122 @@ void bluetoothApply() {   // on only once onboarded (no app-driven TX before a r
   else interface_manager.disableBluetooth();
 }
 
-// GPS clock (Settings > GPS). The module has no power switch, so whenever it isn't needed it sits in standby,
-// which saves ~30 mA (a fifth of the idle draw). With the setting on it streams only RMC (time + fix flag) until
-// two valid fixes a second apart agree, sets the clock, then sleeps 6 h; waking up by itself starts the re-sync.
-// Any command wakes it early, so each wake-up (its start-up banner) re-sends what the current state wants.
-// GPS time beats the phone app and the mesh.
-#define GPS_SLEEP_SECS 21600   // 6 h; the RTC drifts ~0.1 s an hour
+// GPS (Settings > GPS: off / clock / location). The module has no power switch and draws ~30 mA while tracking,
+// so it only runs in short sessions and sits in CASIC standby otherwise (wakes on its timer or on any command; each
+// wake-up prints a banner, which starts the next session). A session streams GGA + RMC and ends as soon as it has
+// what it came for:
+//   clock:     two valid fixes a second apart agree -> set the clock; next session in 6 h
+//   location:  3 agreeing fixes and HDOP <= 2 (or the best after 20 s) -> position; next session in 10 min
+//   request:   the same position, once (send my location / refresh), in any mode
+// No fix in time (indoors): give up and retry in 30 min. Ephemeris stays valid ~4 h, so a recent fix means a quick
+// restart and a shorter timeout; otherwise allow a cold start. By a window a fix can still take 20-40 s.
+// Typical cost in location mode: ~5-35 s at 30 mA every 10 min, ~0.3-2 mA on average.
+#define GPS_CLOCK_SECS   21600    // clock only (and "off"): sleep 6 h; the RTC drifts ~0.1 s an hour
+#define GPS_LOC_SECS     600      // location: a fresh position every 10 min
+#define GPS_RETRY_SECS   1800     // no fix: retry in 30 min
+#define GPS_HOT_MS       90000UL  // session timeout after a fix in the last 4 h
+#define GPS_COLD_MS      150000UL // ... otherwise
+#define GPS_REQ_MS       180000UL // ... when the user asked and is watching (can cancel)
+#define GPS_GOOD_HDOP    2.0f
+#define GPS_SETTLE_MS    20000UL  // take the best position after this long even if HDOP stays above 2
 uint8_t gps_state = GPS_OFF;
-static uint32_t gps_fix_at, gps_last;
+GpsPos gps_pos;
+bool gps_req;
+static uint32_t gps_start, gps_first_valid, gps_last_t, gps_wake_at, gps_fix_ms, gps_clock_ms;
+static uint8_t gps_stable;
 
-static void gpsSleep() {
+static void gpsIdle(uint32_t secs) {   // end a session: standby until the next one
+  gps_req = false;
+  gps_state = prefs.gps ? GPS_FIX : GPS_OFF;
+  if (!prefs.gps) secs = GPS_CLOCK_SECS;   // off: re-sent each time it wakes by itself
   gpsOutput(false);
-  gpsStandby(GPS_SLEEP_SECS);
+  gpsStandby(secs);
+  gps_wake_at = millis() + secs * 1000UL + 60000;
+}
+
+static void gpsStart() {   // also wakes it from standby; the banner that follows re-sends the output setting
+  gps_state = GPS_SEARCH;
+  gps_start = millis();
+  gps_first_valid = gps_last_t = 0;
+  gps_stable = 0;
+  gpsOutput(true);
 }
 
 void gpsApply() {
-  gps_state = prefs.gps ? GPS_SEARCH : GPS_OFF;
-  gps_last = 0;
-  if (prefs.gps) gpsOutput(true);   // wakes it if asleep; the banner that follows re-sends this
-  else gpsSleep();
+  if (prefs.gps) gpsStart();
+  else if (!gps_req) gpsIdle(GPS_CLOCK_SECS);
+}
+
+void gpsRequest() {
+  if (gps_pos.at && client.now() - gps_pos.at < 60) return;   // fresh enough
+  gps_req = true;
+  if (gps_state != GPS_SEARCH) gpsStart();
+}
+
+uint32_t gpsSearchSecs() { return gps_state == GPS_SEARCH ? (millis() - gps_start) / 1000 : 0; }
+
+bool myPosition(double& lat, double& lon) {
+  if (gps_pos.at) { lat = gps_pos.lat; lon = gps_pos.lon; return true; }
+  lat = sensors.node_lat;   // set from the phone app (or a fix saved before a reboot)
+  lon = sensors.node_lon;
+  return lat != 0 || lon != 0;
+}
+
+static void gpsSetPosition(const GpsFix& f) {
+  gps_pos.lat = f.lat;
+  gps_pos.lon = f.lon;
+  gps_pos.acc_m = (uint16_t)constrain(f.hdop * 5.0f, 2.0f, 999.0f);   // rough: HDOP x ~5 m receiver error
+  gps_pos.at = f.time;
+  if (Serial) Serial.printf("GPS position, hdop %.1f, %d sats\n", f.hdop, f.sats);
+  if (prefs.gps != GPS_MODE_LOC) return;   // requests in other modes don't move the node's location
+  // the node's location (adverts if shared, the phone app); saved only after a real move, to spare the flash
+  NodePrefs& np = client.node();
+  bool moved = fabs(np.node_lat - f.lat) > 0.0005 || fabs(np.node_lon - f.lon) > 0.0005;   // ~50 m
+  sensors.node_lat = f.lat;
+  sensors.node_lon = f.lon;
+  if (moved) client.saveNode();
 }
 
 static void gpsLoop() {
+  GpsFix f;
   bool woke;
-  uint32_t t = gpsReadTime(&woke);   // also drains anything the module sent
+  bool got = gpsRead(f, woke);   // also drains anything the module sent
+  uint32_t ms = millis();
   if (woke) {
     if (Serial) Serial.println("GPS awake");
-    if (gps_state == GPS_FIX) gps_state = GPS_SEARCH;   // the 6 h standby ran out: re-sync
-    gps_last = 0;
-    if (gps_state == GPS_OFF) gpsSleep(); else gpsOutput(true);
-  } else if (gps_state == GPS_SEARCH && t >= CLOCK_SANE_MIN) {
-    if (gps_last && t - gps_last >= 1 && t - gps_last <= 2) {
-      client.setClock(t, CLOCK_GPS);
-      if (Serial) Serial.printf("GPS clock set: %u\n", (unsigned)t);
-      gpsSleep();
-      gps_state = GPS_FIX;
-      gps_fix_at = millis();
+    if (gps_state == GPS_SEARCH) gpsOutput(true);   // woken by our command: it may have missed it
+    else if (prefs.gps || gps_req) gpsStart();       // its standby ran out: next session
+    else gpsIdle(GPS_CLOCK_SECS);                    // off: back to sleep
+    return;
+  }
+  if (gps_state != GPS_SEARCH) {
+    if (gps_state == GPS_FIX && (int32_t)(ms - gps_wake_at) > 0) gpsStart();   // never heard it wake: try anyway
+    return;
+  }
+  bool want_pos = prefs.gps == GPS_MODE_LOC || gps_req;
+  if (got && f.time >= CLOCK_SANE_MIN) {
+    gps_stable = gps_last_t && f.time - gps_last_t >= 1 && f.time - gps_last_t <= 2 ? gps_stable + 1 : 1;
+    gps_last_t = f.time;
+    if (!gps_first_valid) gps_first_valid = ms;
+    gps_fix_ms = ms;   // ephemeris is fresh: the next start is a hot one
+    // GPS time beats the app and the mesh; once per clock interval is plenty
+    if (gps_stable >= 2 && (!gps_clock_ms || ms - gps_clock_ms > (GPS_CLOCK_SECS - 600) * 1000UL)) {
+      client.setClock(f.time, CLOCK_GPS);
+      gps_clock_ms = ms;
+      if (Serial) Serial.printf("GPS clock set: %u\n", (unsigned)f.time);
     }
-    gps_last = t;
-  } else if (gps_state == GPS_FIX && millis() - gps_fix_at > (GPS_SLEEP_SECS + 600) * 1000UL) {
-    gpsApply();   // never heard it wake: try again
+    if (!want_pos && gps_stable >= 2) {
+      gpsIdle(GPS_CLOCK_SECS);
+    } else if (want_pos && gps_stable >= 3 && (f.hdop <= GPS_GOOD_HDOP || ms - gps_first_valid > GPS_SETTLE_MS)) {
+      gpsSetPosition(f);
+      gpsIdle(prefs.gps == GPS_MODE_LOC ? GPS_LOC_SECS : GPS_CLOCK_SECS);
+    }
+    return;
+  }
+  bool hot = gps_fix_ms && ms - gps_fix_ms < 4 * 3600000UL;
+  if (ms - gps_start > (gps_req ? GPS_REQ_MS : hot ? GPS_HOT_MS : GPS_COLD_MS)) {
+    if (Serial) Serial.println("GPS: no fix, retry later");
+    gpsIdle(GPS_RETRY_SECS);
   }
 }
 

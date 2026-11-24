@@ -86,20 +86,25 @@ void gpsBegin() {
 // The module has no power-enable pin and tracks (~30 mA) whenever it's awake, even with its output off. CASIC
 // standby stops the receiver; it wakes when the time is up or on any serial command, prints its start-up banner,
 // keeps its settings and has a hot fix within a few seconds.
-void gpsStandby(uint32_t secs) {
-  char body[24], s[32];
-  snprintf(body, sizeof(body), "PCAS12,%u", (unsigned)secs);
+static void gpsSend(const char* body) {   // "$<body>*<checksum>"
   uint8_t cs = 0;
   for (const char* p = body; *p; p++) cs ^= *p;
+  char s[64];
   snprintf(s, sizeof(s), "$%s*%02X\r\n", body, cs);
   Serial1.print(s);
 }
 
-// Streams every NMEA sentence by default. Keep only RMC (all we parse) while we want the time, and nothing at
-// all otherwise.
+void gpsStandby(uint32_t secs) {
+  char body[24];
+  snprintf(body, sizeof(body), "PCAS12,%u", (unsigned)secs);
+  gpsSend(body);
+}
+
+// Streams every NMEA sentence by default. Keep only GGA (accuracy) and RMC (time, fix, position) while we want a
+// fix, and nothing at all otherwise.
 // CASIC PCAS03 fields: GGA,GLL,GSA,GSV,RMC,VTG,ZDA,ANT,DHV,LPS,,,UTC,GST. Not saved on the module.
-void gpsOutput(bool rmc) {
-  Serial1.print(rmc ? "$PCAS03,0,0,0,0,1,0,0,0,0,0,,,0,0*03\r\n" : "$PCAS03,0,0,0,0,0,0,0,0,0,0,,,0,0*02\r\n");
+void gpsOutput(bool on) {
+  gpsSend(on ? "PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0" : "PCAS03,0,0,0,0,0,0,0,0,0,0,,,0,0");
 }
 
 static bool nmeaChecksumOk(const char* s) {
@@ -110,13 +115,27 @@ static bool nmeaChecksumOk(const char* s) {
   return sum == strtoul(star + 1, NULL, 16);
 }
 
-// "$GNRMC,hhmmss.ss,A,lat,N,lon,E,speed,course,ddmmyy,..." -> UTC epoch, 0 unless status is A (valid fix)
-static uint32_t parseRmc(const char* s) {
+static int nmeaFields(const char* s, const char* f[], int max) {   // f[i] = start of field i+1 (after "$..xxx,")
+  int n = 0;
+  for (const char* p = s; *p && n < max; p++) if (*p == ',') f[n++] = p + 1;
+  return n;
+}
+
+static double nmeaDeg(const char* v, const char* hemi) {   // "ddmm.mmmm" / "dddmm.mmmm" + N/S/E/W
+  double x = atof(v);
+  int deg = (int)(x / 100);
+  double d = deg + (x - deg * 100) / 60.0;
+  return (*hemi == 'S' || *hemi == 'W') ? -d : d;
+}
+
+// "$GNRMC,hhmmss.ss,A,lat,N,lon,E,speed,course,ddmmyy,..." -> UTC epoch + position, 0 unless status is A
+static uint32_t parseRmc(const char* s, GpsFix& fix) {
   if (strncmp(s + 3, "RMC,", 4) != 0 || !nmeaChecksumOk(s)) return 0;
   const char* f[10];
-  int n = 0;
-  for (const char* p = s; *p && n < 10; p++) if (*p == ',') f[n++] = p + 1;
+  int n = nmeaFields(s, f, 10);
   if (n < 10 || f[1][0] != 'A') return 0;
+  fix.lat = nmeaDeg(f[2], f[3]);
+  fix.lon = nmeaDeg(f[4], f[5]);
   int hh, mi, ss, dd, mo, yy;
   if (sscanf(f[0], "%2d%2d%2d", &hh, &mi, &ss) != 3 || sscanf(f[8], "%2d%2d%2d", &dd, &mo, &yy) != 3) return 0;
   struct tm t = {};
@@ -129,19 +148,42 @@ static uint32_t parseRmc(const char* s) {
   return mktime(&t);      // no TZ is set, so this is UTC
 }
 
-uint32_t gpsReadTime(bool* woke) {
+// "$GNGGA,time,lat,N,lon,E,quality,sats,hdop,..." -> satellites used and horizontal dilution of precision
+static void parseGga(const char* s, float& hdop, uint8_t& sats) {
+  if (strncmp(s + 3, "GGA,", 4) != 0 || !nmeaChecksumOk(s)) return;
+  const char* f[8];
+  if (nmeaFields(s, f, 8) < 8) return;
+  sats = atoi(f[6]);
+  hdop = f[7][0] != ',' ? atof(f[7]) : 99;
+}
+
+static float hdop = 99;
+static uint8_t sats = 0;
+uint8_t gpsSats() { return sats; }
+
+bool gpsRead(GpsFix& fix, bool& woke) {
   static char line[96];
   static int len = 0;
-  uint32_t found = 0;
-  *woke = false;
+  bool found = false;
+  woke = false;
   while (Serial1.available()) {
     char c = Serial1.read();
     if (c == '\n' || c == '\r') {
       line[len] = 0;
-      if (len > 0) {
-        uint32_t t = parseRmc(line);
-        if (t) found = t;
-        else if (strncmp(line + 3, "TXT,", 4) == 0 && strstr(line, ",MA=")) *woke = true;   // "$GPTXT,..,MA=CASGN"
+      if (len > 6) {
+        GpsFix f;
+        if ((f.time = parseRmc(line, f)) != 0) {
+          f.hdop = hdop;
+          f.sats = sats;
+          fix = f;
+          found = true;
+        } else if (strncmp(line + 3, "GGA,", 4) == 0) {
+          parseGga(line, hdop, sats);
+        } else if (strncmp(line + 3, "TXT,", 4) == 0 && strstr(line, ",MA=")) {   // "$GPTXT,..,MA=CASGN"
+          woke = true;
+          hdop = 99;
+          sats = 0;
+        }
       }
       len = 0;
     } else if (len < (int)sizeof(line) - 1) {

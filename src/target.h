@@ -36,9 +36,11 @@ extern SensorManager sensors;
 
 bool radio_init();
 void gpsBegin();
-void gpsOutput(bool rmc);   // true: RMC once a second, false: GPS module silent
+void gpsOutput(bool on);   // true: GGA + RMC once a second, false: GPS module silent
 void gpsStandby(uint32_t secs);   // receiver off (~30 mA saved) until the time is up or any command wakes it
-// UTC epoch once a valid RMC sentence (fix) arrives, else 0. Position is ignored for now. *woke is set when the
-// module's start-up banner arrives (power-on, or out of standby).
-uint32_t gpsReadTime(bool* woke);
+struct GpsFix { uint32_t time; double lat, lon; float hdop; uint8_t sats; };
+// Drains what the module sent. True when a valid fix (RMC status A) arrived: time = UTC epoch, hdop/sats from the
+// latest GGA. woke = the module's start-up banner arrived (power-on, or out of standby).
+bool gpsRead(GpsFix& fix, bool& woke);
+uint8_t gpsSats();   // satellites used, from the latest GGA (progress while searching)
 mesh::LocalIdentity radio_new_identity();

@@ -297,7 +297,9 @@ void ChatClient::onACKRecv(uint32_t ack_crc) {
 
 bool ChatClient::sendAdvert(bool flood) {
   if (flood) return the_mesh.advert();
-  mesh::Packet* pkt = the_mesh.createSelfAdvert(node().node_name);
+  mesh::Packet* pkt = node().advert_loc_policy == ADVERT_LOC_SHARE   // as the engine's flood advert
+      ? the_mesh.createSelfAdvert(node().node_name, sensors.node_lat, sensors.node_lon)
+      : the_mesh.createSelfAdvert(node().node_name);
   if (!pkt) return false;
   the_mesh.sendZeroHop(pkt);
   return true;
