@@ -107,6 +107,21 @@ bool myPosition(double& lat, double& lon) {
   return lat != 0 || lon != 0;
 }
 
+// Phone app: GPS on/off. Off -> off; on keeps clock or location, and from off picks location (what "GPS on" means on
+// other MeshCore boards: the node keeps a position).
+const char* CardputerSensors::getSettingValue(int i) const { return i == 0 ? (prefs.gps ? "1" : "0") : NULL; }
+
+bool CardputerSensors::setSettingValue(const char* name, const char* value) {
+  if (strcmp(name, "gps") != 0) return false;   // e.g. "gps_interval": ours is fixed (10 min)
+  uint8_t mode = strcmp(value, "0") == 0 ? GPS_MODE_OFF : prefs.gps ? prefs.gps : GPS_MODE_LOC;
+  if (mode != prefs.gps) {
+    prefs.gps = mode;
+    prefsSave();
+    gpsApply();
+  }
+  return true;
+}
+
 static void gpsSetPosition(const GpsFix& f) {
   gps_pos.lat = f.lat;
   gps_pos.lon = f.lon;

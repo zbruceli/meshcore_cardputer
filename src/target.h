@@ -25,6 +25,16 @@ public:
   int recvRaw(uint8_t* bytes, int sz) override;
   bool startSendRaw(const uint8_t* bytes, int len) override;
 };
+// The phone app's GPS switch (Position Settings) reads and sets the custom var "gps" through the sensor manager, as
+// on MeshCore boards with a GPS. Ours maps it onto SET > GPS: app off = off, app on = clock or location (main.cpp).
+class CardputerSensors : public SensorManager {
+public:
+  int getNumSettings() const override { return 1; }
+  const char* getSettingName(int i) const override { return i == 0 ? "gps" : NULL; }
+  const char* getSettingValue(int i) const override;
+  bool setSettingValue(const char* name, const char* value) override;
+};
+
 void onRadioRx(const uint8_t* raw, int len, float snr);   // implemented by the chat client
 void onRadioTx(const uint8_t* raw, int len);
 
@@ -32,7 +42,7 @@ extern CardputerBoard board;
 extern CustomSX1262 radio;
 extern CardputerRadio radio_driver;
 extern AutoDiscoverRTCClock rtc_clock;
-extern SensorManager sensors;
+extern CardputerSensors sensors;
 
 bool radio_init();
 void gpsBegin();

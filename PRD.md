@@ -44,6 +44,7 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
   fixes, every 6 h; location = 3 agreeing fixes with HDOP ≤ 2 (or the best after 20 s), every 10 min, used as the
   node's location (adverts only if shared; saved after a ~50 m move). "My location" from a chat or SET gets a fresh
   fix in any mode. No fix: give up after 90–180 s, retry in 30 min. Contacts with a location show distance/direction.
+  The phone app's GPS switch (custom var `gps`) maps to it: off = off, on = clock or location (location from off).
 - **Clock:** no RTC chip: GPS → phone app → two agreeing mesh senders → manual. `--:--` until set.
 - **Phone app:** the official MeshCore app pairs as with any companion radio (`MeshCore-<name>`, 6-digit PIN,
   random each boot unless set from the app); shares contacts, channels and node settings. Messages sent from one

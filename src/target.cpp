@@ -31,7 +31,7 @@ bool CardputerRadio::startSendRaw(const uint8_t* bytes, int len) {
 
 ESP32RTCClock fallback_clock;
 AutoDiscoverRTCClock rtc_clock(fallback_clock);
-SensorManager sensors;
+CardputerSensors sensors;
 
 void CardputerBoard::begin() {
   ESP32Board::begin();   // Wire on the Grove port (PIN_BOARD_SDA/SCL), battery ADC

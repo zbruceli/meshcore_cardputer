@@ -32,7 +32,7 @@ and repeaters.
 - **Phone app over Bluetooth:** same contacts, channels and radio settings as the keyboard; both work at once.
 - **GPS** (SET > **GPS**: off / clock / location): sets the clock; in location mode a fresh position every 10 min.
   Send your location from any chat, see distance and direction to contacts, optionally share it in adverts. The
-  GPS only runs for short fixes and sleeps otherwise.
+  GPS only runs for short fixes and sleeps otherwise. The phone app's GPS switch works too (on = location mode).
 - **Clock:** from the GPS, the phone app or the mesh; or set it by hand.
 - **Radio and power:** region presets (868–923 MHz) or manual settings, airtime and noise floor, screen dims and
   sleeps when idle.
