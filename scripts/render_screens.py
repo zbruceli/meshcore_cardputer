@@ -219,9 +219,9 @@ s.save("radio")
 
 s = Screen()   # 5 SET, Bluetooth rows
 s.status("5 SET")
-for r, (k, v) in enumerate([("Auto-add", "< chat+rpt >"), ("Overwrite old", "< on >"), ("Bluetooth", "< on >"),
-                            ("App PIN", "482913"), ("Brightness", "< 3/4 >"), ("Screen off", "< 30s >")]):
-    s.row(r, k, v, sel=(r == 3))
+for r, (k, v) in enumerate([("Overwrite old", "< on >"), ("Bluetooth", "< on >"), ("App PIN", "482913"),
+                            ("Brightness", "< 3/4 >"), ("Colours", "< Amber >"), ("Screen off", "< 30s >")]):
+    s.row(r, k, v, sel=(r == 2))
 s.hints("ENT edit   , / change")
 s.save("settings")
 
