@@ -25,7 +25,8 @@ jobs:
           TAG=$(gh release view --json tagName -q .tagName)
           mkdir -p _site
           cp web/* _site/
-          gh release download "$TAG" --pattern "*.bin" --output _site/firmware.bin
+          gh release download "$TAG" --pattern "*.bin" --output merged.bin
+          python3 scripts/split_image.py merged.bin _site   # parts skip NVS: the phone pairing survives
           sed -i "s/VERSION/${TAG#v}/g" _site/index.html _site/manifest.json
       - uses: actions/upload-pages-artifact@v3
         with:

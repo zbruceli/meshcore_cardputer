@@ -67,8 +67,9 @@ in hours: a battery run-down test.
 
 v0.3.2 → v0.4.0 (2026-11-24, esptool at 0x0, release images): all data files byte-identical, settings kept. The
 phone pairing is lost: the merged image fills 0x9000–0xDFFF (NVS, where the Bluetooth bonds live) with 0xFF, so every
-upgrade since v0.3.0 needs re-pairing. Fix candidate: web installer writes the parts separately (skips NVS);
-M5Burner takes one image at 0x0, so it keeps the re-pair note. M5Burner (erase + v0.3.2, then v0.4.0 without
+upgrade since v0.3.0 needs re-pairing. Fixed for the web installer (2026-11-24): it writes the four parts at their own
+offsets (`scripts/split_image.py`) and skips NVS; tested with esptool writing the same parts, bond and local keys
+unchanged. M5Burner takes one image at 0x0, so it keeps the re-pair note. M5Burner (erase + v0.3.2, then v0.4.0 without
 erase): same result, data kept, phone re-paired.
 
 ## Risks
@@ -76,7 +77,7 @@ erase): same result, data kept, phone re-paired.
 | Risk | Mitigation |
 |---|---|
 | An upgrade loses user data | Upgrade rules in `CLAUDE.md`; upgrade test above; keep migration code for every released format |
-| An upgrade drops the phone pairing (merged image wipes NVS) | README tells users to re-pair; split-part web installer would keep it |
+| An upgrade drops the phone pairing (merged image wipes NVS) | Web installer writes split parts (keeps it); README tells M5Burner/esptool users to re-pair |
 | RAM (no PSRAM; Bluetooth takes ~100 KB) | Fixed-size arrays; check free heap after each change |
 | Weak link indoors: repeaters often can't hear us | Not the firmware (SDR: TX matches a T-Deck); test by a window or outdoors |
 | MeshCore API or file-format churn | Commit pinned; bump deliberately, re-test with the app and the upgrade test |

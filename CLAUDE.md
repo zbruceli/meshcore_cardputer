@@ -87,7 +87,9 @@ Release: bump `FW_VERSION` (and `FIRMWARE_VERSION`) in `platformio.ini`, write `
 commit, push tag `v<FW_VERSION>`; the release workflow builds the `.bin`, attaches it to a GitHub Release (the
 notes file above the generated changelog) and publishes `web/` to GitHub Pages.
 Installer-page changes alone: `web/` changes on `main` (or a manual run) republish via `pages.yml` with the latest
-release's `.bin`.
+release's `.bin`. Both workflows split the merged `.bin` (`scripts/split_image.py`) so the web installer skips NVS
+(0x9000–0xDFFF, Bluetooth bonds) and the phone pairing survives; M5Burner/esptool users write the merged image and
+re-pair.
 
 ## Working rules
 

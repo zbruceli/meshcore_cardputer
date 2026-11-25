@@ -47,7 +47,7 @@ jobs:
         run: |
           mkdir -p _site
           cp web/* _site/
-          cp dist/*.bin _site/firmware.bin
+          python3 scripts/split_image.py dist/*.bin _site   # parts skip NVS: the phone pairing survives
           sed -i "s/VERSION/${GITHUB_REF_NAME#v}/g" _site/index.html _site/manifest.json
       - uses: actions/upload-pages-artifact@v3
         with:
