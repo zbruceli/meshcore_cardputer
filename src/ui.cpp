@@ -256,6 +256,46 @@ static void powerTick() {
   else if (idle > secs * 500) setDisplay(DISP_DIM);
 }
 
+// ---------------------------------------------------------------- battery and power off
+
+// Every 10 s: warn at 10 % and 5 % (once each, until it's charged past 20 %), power off after 30 s under
+// BATT_EMPTY_MV. Readings under 2.5 V mean no battery is measured (on USB with the switch off): ignored.
+static void batteryCheck() {
+  static uint8_t warned = 0, low_reads = 0;
+  int mv = board.getBattMilliVolts();
+  batt_pct = board.battPercent();
+  if (mv > 2500 && mv < BATT_EMPTY_MV) {
+    if (++low_reads >= 3) powerOffScreen(true);
+  } else {
+    low_reads = 0;
+  }
+  if (mv <= 2500) return;
+  if (batt_pct > 20) warned = 0;
+  uint8_t level = batt_pct <= 5 ? 2 : batt_pct <= 10 ? 1 : 0;
+  if (level > warned) {
+    warned = level;
+    char s[COLS + 1];
+    snprintf(s, sizeof(s), level == 2 ? "Battery %d%%: charge now" : "Battery low: %d%%", batt_pct);
+    toast(s);
+    if (prefs.beep) M5Cardputer.Speaker.tone(1400, 150);
+    wake();
+  }
+}
+
+void powerOffScreen(bool empty) {
+  M5Cardputer.Display.wakeup();
+  M5Cardputer.Display.setBrightness(BRIGHTNESS_LEVELS[prefs.brightness]);
+  M5Cardputer.Display.fillScreen(C_BG);
+  M5Cardputer.Display.setFont(&fonts::AsciiFont8x16);
+  M5Cardputer.Display.setTextColor(empty ? C_ALERT : C_FG, C_BG);
+  M5Cardputer.Display.drawString(empty ? "Battery empty" : "Powering off", 8, 40);
+  M5Cardputer.Display.setTextColor(C_DIM, C_BG);
+  M5Cardputer.Display.drawString(empty ? "Charge it, then press G0" : "Press G0 to turn on", 8, 64);
+  M5Cardputer.Display.drawString("(or the power switch)", 8, 80);
+  delay(2500);
+  powerOff();
+}
+
 // ---------------------------------------------------------------- main loop
 
 void uiSplash() {
@@ -295,9 +335,18 @@ bool uiLoop() {
     }
   }
 
-  if (M5Cardputer.BtnA.wasPressed() && prefs.onboarded) {   // G0
-    wake();
-    toast(client.sendAdvert(true) ? "Advert sent (flood)" : "Advert failed");
+  // G0: a short press sends a flood advert; held 3 s it powers off (a hint after 1 s)
+  static uint32_t g0_down = 0;
+  static bool g0_hint = false;
+  if (M5Cardputer.BtnA.wasPressed()) { g0_down = t ? t : 1; g0_hint = false; wake(); }
+  if (g0_down && M5Cardputer.BtnA.isPressed()) {
+    if (t - g0_down >= 3000) { g0_down = 0; powerOffScreen(false); }
+    else if (t - g0_down >= 1000 && !g0_hint) { g0_hint = true; toast("Keep holding to power off"); }
+  }
+  if (g0_down && M5Cardputer.BtnA.wasReleased()) {
+    if (!g0_hint && prefs.onboarded) toast(client.sendAdvert(true) ? "Advert sent (flood)" : "Advert failed");
+    else if (g0_hint) toast("Power off cancelled");
+    g0_down = 0;
   }
 
   if (msg_added != seen_added) {
@@ -327,7 +376,7 @@ bool uiLoop() {
     dirty = true;
     if (t - last_batt_read > 10000 || last_batt_read == 0) {
       last_batt_read = t;
-      batt_pct = board.battPercent();
+      batteryCheck();
     }
   }
 

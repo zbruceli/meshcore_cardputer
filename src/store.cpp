@@ -221,6 +221,12 @@ void storeLoop() {
   }
 }
 
+void storeFlush() {
+  if (!msgs_save_at) return;
+  msgs_save_at = 0;
+  msgsSave();
+}
+
 void storeWipe() {
   SPIFFS.format();
   ESP.restart();

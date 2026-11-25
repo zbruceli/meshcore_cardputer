@@ -60,7 +60,9 @@ src/ui_screens.cpp   per-screen draw()/key() + dispatch
 - "Not heard back" indoors is the location, not the firmware: RTL-SDR (`scripts/sdr_burst.py`) shows our TX within
   ~0.5 dB of a T-Deck Plus, which fails from the same spot too. On a hillside (v0.3.0) both pass the Bay Area health
   check (84–87 % vs 82 %). Judge radio changes on same-spot alternating SDR runs or several sends, outdoors.
-- Battery ADC G10 (×2). G0 = user button (flood advert). Display 240×135. Keyboard TCA8418 (auto-detected).
+- Battery ADC G10 (×2); under 2.5 V = not measured (USB, switch off). G0 = user button (flood advert; held 3 s =
+  power off). Waking from deep sleep with G0 boots normally (checked unplugged: not download mode).
+  Display 240×135. Keyboard TCA8418 (auto-detected).
 - Prior port to crib from: https://github.com/Stachugit/MeshCore-Cardputer-ADV (`variants/m5stack_cardputer/`).
 
 ## UI rules
@@ -69,8 +71,8 @@ src/ui_screens.cpp   per-screen draw()/key() + dispatch
   `#FF9500` / dim `#7A4800` on black); selection = inverse; `C_ALERT` only for errors. Never hard-code a colour.
 - Layout: 16 px status bar · 6 rows of 8×16 text (30 columns) · 16 px key-hint bar. Hints must fit 30 chars.
 - Keys: `Tab` / `1..5` tabs (`6` if the test tab is on; `Fn+digit` while typing), `; . , /` arrows (`Fn` needed
-  while typing), `Enter`, `` ` `` back, `Del`, letters as screen actions. G0 = advert. Destructive actions need
-  the key pressed twice.
+  while typing), `Enter`, `` ` `` back, `Del`, letters as screen actions. G0 = advert (hold 3 s: power off).
+  Destructive actions need the key pressed twice.
 - Pager feel: in a conversation, typing goes straight into the compose line.
 
 ## Commands

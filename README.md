@@ -37,7 +37,7 @@ and repeaters.
   GPS only runs for short fixes and sleeps otherwise. The phone app's GPS switch works too (on = location mode).
 - **Clock:** from the GPS, the phone app or the mesh; or set it by hand.
 - **Radio and power:** region presets (868–923 MHz) or manual settings, airtime and noise floor, screen dims and
-  sleeps when idle.
+  sleeps when idle. Battery warnings at 10 % and 5 %; it powers itself off when the battery is empty.
 - **Colour schemes:** amber (default), green phosphor, VFD cyan, red, blue LCD, classic LCD and paper.
 
 ![Colour schemes](docs/screens/themes.png)
@@ -72,7 +72,7 @@ If the computer doesn't see it: power switch **off**, hold **G0** while plugging
 | `Tab`, `1`–`5` | Switch tabs (`Fn`+digit while typing) |
 | `;` `.` `,` `/` | Up, down, left, right (`Fn` while typing) |
 | `Enter` / `` ` `` / `Del` | Select or send / back / delete |
-| G0 button | Send an advert (announce yourself) |
+| G0 button | Press: send an advert (announce yourself). Hold 3 s: power off; press again to turn on |
 
 - **Chat:** just type; `Enter` sends. `Fn+R` in a channel starts a reply to the latest sender. `Enter` on an
   empty line lists your quick replies: `1`–`8` (or arrows and `Enter`) puts one in the compose line, `Enter`

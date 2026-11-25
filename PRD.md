@@ -54,8 +54,10 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
 - **UI:** four-colour schemes (default amber `#FF9500` / dim `#7A4800` on black; also green, VFD, red, blue LCD,
   LCD, paper), alert colour only for errors, 8×16 font, 16 px status bar · 6 rows · 16 px hint bar; tabs `1 MSG`
   `2 CON` `3 RPT` `4 RAD` `5 SET` (`6 TST` optional); typing in a chat goes straight to the compose line.
-- **Power:** dim at half the screen timeout, off at the timeout (default 30 s), CPU 80 MHz while off. Phase 2:
-  light sleep, power off, ≥ 24 h idle listening.
+- **Power:** dim at half the screen timeout, off at the timeout (default 30 s), CPU 80 MHz while off. G0 held 3 s
+  powers off (deep sleep; G0 turns it on, the clock survives; a short wake every 6 h keeps the GPS asleep).
+  Battery: warnings at 10 % and 5 %, power off after 30 s under 3.30 V (readings under 2.5 V = no battery, ignored).
+  Phase 2: light sleep, ≥ 24 h idle listening.
 
 - **Upgrades:** installing a newer release (web installer, M5Burner, esptool) keeps identity, name, radio and UI
   settings, contacts, channels, message history and app pairing. Format changes migrate data automatically and

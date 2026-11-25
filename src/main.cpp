@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <SPIFFS.h>
+#include <driver/rtc_io.h>
 #include <M5Cardputer.h>
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/MultiSerialInterface.h>
@@ -180,7 +181,53 @@ static void gpsLoop() {
   }
 }
 
+// ---- power off (G0 held 3 s, or an empty battery) ----
+// Deep sleep with everything else off; G0 turns it back on (a normal boot; the clock survives). The GPS can't be
+// switched off, only put in standby for up to 6 h, so a timer wakes the ESP32 just after it, sends it back to sleep
+// and goes straight back to deep sleep.
+RTC_DATA_ATTR static uint8_t soft_off;   // survives deep sleep: "off", as opposed to a normal reset
+
+static void gpsSleepLong() {
+  gpsOutput(false);                       // wakes it if it's in standby: commands right after waking get lost
+  uint32_t t = millis();
+  while (millis() - t < 1200) { while (Serial1.available()) Serial1.read(); delay(10); }
+  gpsStandby(GPS_CLOCK_SECS);
+  Serial1.flush();
+}
+
+static void deepSleep() {
+  soft_off = 1;
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);                          // G0 pressed
+  esp_sleep_enable_timer_wakeup((GPS_CLOCK_SECS + 60) * 1000000ULL);   // just after the GPS wakes itself
+  esp_deep_sleep_start();
+}
+
+void powerOff() {
+  storeFlush();
+  if (radio_ok) radio.sleep(false);       // cold sleep, TCXO off
+  digitalWrite(P_LORA_NSS, HIGH);         // keep the radio deselected while the ESP32 sleeps
+  rtc_gpio_hold_en((gpio_num_t)P_LORA_NSS);
+  gpsSleepLong();
+  M5Cardputer.Speaker.end();
+  M5Cardputer.Display.setBrightness(0);
+  M5Cardputer.Display.sleep();
+  while (digitalRead(GPIO_NUM_0) == LOW) delay(10);   // still holding G0: it would wake at once
+  delay(50);
+  if (Serial) { Serial.println("power off"); Serial.flush(); }
+  deepSleep();
+}
+
 void setup() {
+  if (esp_reset_reason() == ESP_RST_DEEPSLEEP && soft_off) {
+    if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {   // still off: put the GPS back to sleep
+      Serial1.begin(115200, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
+      gpsSleepLong();
+      deepSleep();
+    }
+    soft_off = 0;   // G0: turn on
+  }
+  rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
   Serial.begin(115200);
   board.begin();
   // the splash uses the saved colour scheme; only the first boot (formatting, ~22 s) shows it before prefs exist
@@ -198,6 +245,8 @@ void setup() {
 
   gpsBegin();
   gpsApply();
+  int mv = board.getBattMilliVolts();   // turned on with an empty battery (under 2.5 V = no battery reading)
+  if (mv > 2500 && mv < BATT_EMPTY_MV + 50) powerOffScreen(true);
   store.begin();
   the_mesh.begin();
   migrateOldData();

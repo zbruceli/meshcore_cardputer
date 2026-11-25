@@ -32,6 +32,7 @@ extern M5Canvas canvas;
 extern const uint8_t BRIGHTNESS_LEVELS[4];
 extern const uint16_t SCREEN_OFF_SECS[6];   // 0 = never
 extern bool radio_ok;
+#define BATT_EMPTY_MV  3300   // power off below this (the 0 % mark); warnings at 10 % and 5 %
 extern uint32_t loop_max_ms;   // longest loop() since the test tab's stats reset
 
 // ui.cpp: primitives
@@ -55,6 +56,8 @@ bool screenShowsConv(const uint8_t conv[]);
 bool screenTick();   // every loop while the display is on: true = redraw
 
 void uiSplash();   // right after board.begin(): something on screen while storage is set up
+void powerOffScreen(bool empty);   // message, then power off (main.cpp powerOff); empty = the battery ran out
+void powerOff();                   // main.cpp: deep sleep until G0
 void uiBegin();
 void applyBrightness();
 bool uiLoop();      // true while the display is off

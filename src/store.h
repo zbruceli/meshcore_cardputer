@@ -80,4 +80,5 @@ void msgsChanged();         // schedule a lazy save
 void msgsLoad();
 
 void storeLoop();           // performs lazy saves
+void storeFlush();          // saves anything pending now (before power off)
 void storeWipe();           // factory reset
