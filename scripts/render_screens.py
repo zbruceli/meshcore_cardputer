@@ -264,6 +264,23 @@ for x in range(0, W, 4):
 s.hints("bright = packet  , / page")
 s.save("test_rssi")
 
+s = Screen()   # 6 TST RUN: tests that transmit
+s.status("6 TST RUN")
+for r, (k, v) in enumerate([("Hear me", "3/3 3rpt +4"), ("Echo #test", "2/3 avg 2.5"), ("Trace", "back ok"),
+                            ("SDR burst", "")]):
+    s.row(r, k, v, sel=(r == 1))
+s.row(4, "Msg on #test x3, 30s apart,", color=DIM)
+s.row(5, "count repeats ([heard N])", color=DIM)
+s.hints("ENT run         , / page")
+s.save("test_run")
+
+s = Screen()   # trace result: each node and how it heard the previous one
+s.status("6 TST TRACE")
+for r, (k, v) in enumerate([("Ridge-2", "+5.5dB"), ("Hilltop", "+2.0dB"), ("Ridge-2", "+7.0dB"), ("me", "+6.2dB")]):
+    s.row(r, k, v)
+s.hints("ENT again        ` back")
+s.save("test_trace")
+
 # every colour scheme, labelled, 4 per row
 GAP, LABEL = 8, 20
 cols = 4

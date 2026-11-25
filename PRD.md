@@ -36,7 +36,9 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
   repeaters by when last heard, with the SNR of their last relay; unknown ones can be added.
 - **Radio info:** big frequency readout, SF/BW/CR/power, RSSI/SNR/noise floor, packet counts, airtime, battery.
 - **Test tab** (`6 TST`, off by default): last 32 packets in/out with details (path, sender, last repeater), counters
-  since reset (CRC errors, flood/direct, airtime incl. last hour, loop time, heap), live RSSI graph. Receive only.
+  since reset (CRC errors, flood/direct, airtime incl. last hour, loop time, heap), live RSSI graph. Tests that
+  transmit, few rounds and spaced out, never on Public: hear me (zero-hop discovery x3, 30 s), echo on `#test`
+  (x3, 30 s, repeats per message), trace to a repeater and back (SNR per hop), SDR burst (zero-hop advert x10, 5 s).
 - **Settings:** region or manual radio parameters, TX power, path hash size, auto-add, Bluetooth on/off and app
   PIN, brightness, colour scheme, screen timeout, beep, quick replies, test tab, GPS mode, my location, location
   in adverts, time zone, clock, factory reset.

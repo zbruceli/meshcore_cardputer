@@ -19,6 +19,8 @@ and repeaters.
 | **5 SET** settings, incl. Bluetooth and app PIN | First-boot setup: pick your region |
 | ![Test: packets](docs/screens/test_packets.png) | ![Test: RSSI](docs/screens/test_rssi.png) |
 | **6 TST** (optional): live packet log | **6 TST**: live RSSI graph, packets bright |
+| ![Test: run](docs/screens/test_run.png) | ![Test: trace](docs/screens/test_trace.png) |
+| **6 TST**: tests that transmit (hear me, echo) | **6 TST**: trace, SNR at every hop there and back |
 | ![Quick replies](docs/screens/quick.png) | ![Edit quick replies](docs/screens/quick_set.png) |
 | Quick replies: `Enter` on an empty line | Edit them in SET > **Quick replies** |
 
@@ -82,6 +84,10 @@ If the computer doesn't see it: power switch **off**, hold **G0** while plugging
 - **4 RAD:** `Enter` flood advert, `Z` zero-hop advert.
 - **6 TST** (turn on with **Test tab** in SET): `,` `/` switch pages. Packets: last 32 in and out, `Enter` for
   path, sender and repeater. Stats: counters, CRC errors, airtime, `R` resets. RSSI: live signal graph (24 s).
+  Run: tests that transmit, `Enter` starts, `` ` `` stops. **Hear me**: 3 discovery rounds, how many repeaters
+  reply and how well they hear you. **Echo #test**: 3 messages on `#test` (join it first), repeats per message.
+  **Trace**: pick a repeater with a known path; SNR at every hop there and back. **SDR burst**: 10 zero-hop
+  adverts, 5 s apart, for `scripts/sdr_burst.py`.
 - **5 SET:** `,` `/` change, `Enter` edit. **Colours** picks a scheme (see below). **My location**: `Enter` gets
   a fresh fix. **Loc in adverts** shares your position with the mesh (off by default; same setting as the phone
   app). Factory reset needs `Enter` twice.

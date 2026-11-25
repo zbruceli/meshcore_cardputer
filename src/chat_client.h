@@ -39,6 +39,19 @@ struct RadioStats { uint32_t rx, rx_err, tx, rx_flood, rx_direct, tx_flood, tx_d
 
 struct Discovered { uint8_t pub_key[PUB_KEY_SIZE]; int8_t snr_in4, snr_out4; uint32_t at; };   // SNR x4
 
+// test tab, part 2: tests that transmit. A shared mesh: few rounds, spaced out, nothing on Public.
+enum { TEST_HEAR, TEST_ECHO, TEST_TRACE, TEST_SDR, TEST_COUNT };
+enum { TS_NEVER, TS_RUNNING, TS_DONE, TS_STOPPED };
+#define TRACE_MAX_HOPS 9      // out + target + back: up to 4 repeaters on the way
+struct TestResult {
+  uint8_t state;             // TS_*
+  uint8_t round, rounds;     // sent so far / planned
+  uint8_t ok;                // hear: rounds with a reply; echo: messages echoed; trace: 1 = came back
+  uint8_t count;             // hear: distinct repeaters; echo: echoes in all
+  int8_t best_in4, best_out4;   // hear: best SNR x4 (in: we hear them, out: they hear us)
+};
+struct TraceHop { uint8_t hash; int8_t snr4; };   // snr4 = how this node heard the previous one; -128 = no reply
+
 // Auto-add choices, as the app's "Auto Add" settings (NodePrefs manual_add_contacts / autoadd_config)
 enum { ADD_CHAT_RPT, ADD_ALL, ADD_CHAT, ADD_OFF, NUM_ADD_MODES };
 
@@ -68,6 +81,13 @@ class ChatClient : public MyMesh::Listener {
   RadioStats stats_base = {};
   uint32_t air_min[60];      // TX airtime total at each of the last 60 minutes (for the last-hour share)
   uint32_t air_min_count = 0, air_min_at = 0;
+  int test_kind = -1;        // running test, -1 = none
+  uint32_t test_next = 0;    // millis() of the next step
+  int test_chan = 0;         // echo test: channel index
+  uint32_t test_echo_ts = 0; // echo test: sender_ts of the latest test message
+  uint8_t hear_keys[MAX_DISCOVERED][4];   // hear test: repeaters that replied in any round
+  int hear_nkeys = 0;
+  uint32_t trace_tag = 0, trace_until = 0;
   int32_t clock_votes[4];   // (heard timestamp - uptime secs) of recent adverts/messages
   uint8_t vote_src[4];      // who sent each one (pubkey byte / sender name hash)
   int num_votes = 0;
@@ -77,6 +97,8 @@ class ChatClient : public MyMesh::Listener {
   void clockVote(uint32_t ts, uint8_t src);
   void sendDMAttempt(Msg& m, ContactInfo& to);
   void checkDMRetries();
+  void testTick();
+  void testCollect();
 
 public:
   // MyMesh::Listener
@@ -87,6 +109,8 @@ public:
   void onDiscoveredContact(ContactInfo& contact, bool is_new, uint8_t path_len, const uint8_t* path) override;
   void onControlDataRecv(const mesh::Packet* pkt) override;
   void onACKRecv(uint32_t ack_crc) override;
+  void onTraceRecv(mesh::Packet* pkt, uint32_t tag, uint32_t auth_code, uint8_t flags, const uint8_t* path_snrs,
+                   const uint8_t* path_hashes, uint8_t path_len) override;
 
   void packetIn(const uint8_t* raw, int len, float snr);   // every packet received / sent (radio hooks)
   void packetOut(const uint8_t* raw, int len);
@@ -101,6 +125,15 @@ public:
   void resetStats();
   uint32_t txAirLastHour(uint32_t& window_ms);
   int repeatersHeard();
+  bool startTest(int kind, int chan = 0);    // TEST_HEAR / TEST_ECHO (chan = channel index) / TEST_SDR
+  bool startTrace(const ContactInfo& c);     // to a repeater with a known path, and back
+  void stopTest();
+  int  testRunning() const { return test_kind; }
+  int  testSecsToNext() const { return test_kind >= 0 ? max(0, (int32_t)(test_next - millis()) / 1000 + 1) : 0; }
+  TestResult tests[TEST_COUNT] = {};
+  TraceHop trace_hops[TRACE_MAX_HOPS];
+  int trace_nhops = 0;
+  int8_t trace_final4 = -128;                // how we heard the last hop
 
   // node settings, shared with the phone app
   NodePrefs& node() { return *the_mesh.getNodePrefs(); }

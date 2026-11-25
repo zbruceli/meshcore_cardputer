@@ -919,8 +919,8 @@ static void keyRadio(const Key& k) {
 
 // ================================================================ 6 TST: packets, stats, RSSI (hidden unless on in SET)
 
-enum { TP_PACKETS, TP_STATS, TP_RSSI, TP_COUNT };
-static const char* TP_TITLES[TP_COUNT] = { "6 TST PKTS", "6 TST STATS", "6 TST RSSI" };
+enum { TP_PACKETS, TP_STATS, TP_RSSI, TP_RUN, TP_COUNT };
+static const char* TP_TITLES[TP_COUNT] = { "6 TST PKTS", "6 TST STATS", "6 TST RSSI", "6 TST RUN" };
 static int test_page;
 static uint32_t pkt_seen;              // pktTotal() at the last draw: new packets push the cursor down with its packet
 static uint32_t pkt_open;              // seq of the packet shown in S_PACKET
@@ -1067,6 +1067,148 @@ static void drawRssi() {
   drawHints("bright = packet  , / page");
 }
 
+static bool trace_view;   // trace screen: false = picking a repeater, true = the trace and its result
+
+// ---- RUN page: tests that transmit (few rounds, spaced out; see ChatClient::startTest)
+
+static const char* const RUN_LABELS[TEST_COUNT] = { "Hear me", "Echo #test", "Trace", "SDR burst" };
+static const char* const RUN_HELP[TEST_COUNT][2] = {
+  { "Discovery x3, 30s apart:", "do repeaters hear me here?" },
+  { "Msg on #test x3, 30s apart,", "count repeats ([heard N])" },
+  { "Ping a repeater and back,", "SNR at every hop" },
+  { "Zero-hop advert x10, 5s", "apart, for sdr_burst.py" },
+};
+
+static int findTestChannel() {   // "#test" if joined, else -1 (never Public)
+  ChannelDetails ch;
+  for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
+    if (the_mesh.getChannel(i, ch) && strcmp(ch.name, "#test") == 0) return i;
+  return -1;
+}
+
+static void fmtResult(char* v, int sz, int kind) {
+  const TestResult& r = client.tests[kind];
+  if (r.state == TS_RUNNING && kind == TEST_TRACE) snprintf(v, sz, "waiting");
+  else if (r.state == TS_RUNNING) snprintf(v, sz, "%d/%d %2ds", r.round, r.rounds, client.testSecsToNext());
+  else if (r.state == TS_STOPPED) snprintf(v, sz, kind == TEST_TRACE ? "no reply" : "stopped");
+  else if (r.state != TS_DONE) v[0] = 0;
+  else if (kind == TEST_HEAR && r.ok) snprintf(v, sz, "%d/%d %drpt %+d", r.ok, r.rounds, r.count, r.best_out4 / 4);
+  else if (kind == TEST_HEAR) snprintf(v, sz, "0/%d none", r.rounds);
+  else if (kind == TEST_ECHO) snprintf(v, sz, "%d/%d avg %.1f", r.ok, r.rounds, r.ok ? (float)r.count / r.ok : 0.0f);
+  else if (kind == TEST_TRACE) snprintf(v, sz, "back ok");
+  else snprintf(v, sz, "%d sent", r.round);
+}
+
+static void drawRun() {
+  listMove(sel, top, TEST_COUNT, Key{K_NONE});
+  for (int i = 0; i < TEST_COUNT; i++) {
+    char v[16];
+    fmtResult(v, sizeof(v), i);
+    drawRow(i, i == sel, RUN_LABELS[i], v);
+  }
+  drawRow(4, false, RUN_HELP[sel][0], NULL, C_DIM);
+  drawRow(5, false, RUN_HELP[sel][1], NULL, C_DIM);
+  drawHints(client.testRunning() >= 0 ? "` stop          , / page" : "ENT run         , / page");
+}
+
+static void keyRun(const Key& k) {
+  listMove(sel, top, TEST_COUNT, k);
+  if (k.code == K_BACK && client.testRunning() >= 0) { client.stopTest(); toast("Test stopped"); return; }
+  if (k.code != K_ENTER) return;
+  if (client.testRunning() >= 0) { toast("A test is running: ` stops"); return; }
+  if (sel == TEST_TRACE) { trace_view = false; go(S_TRACE); return; }
+  int chan = 0;
+  if (sel == TEST_ECHO && (chan = findTestChannel()) < 0) { toast("Join #test first (MSG > A)"); return; }
+  client.startTest(sel, chan);
+}
+
+// ---- trace: pick a repeater with a known path, then see each hop's SNR
+
+static uint16_t trace_items[MAX_CONTACTS];
+static int trace_count;
+
+static void buildTraceItems() {
+  trace_count = 0;
+  ContactInfo c;
+  for (int i = 0; i < the_mesh.getNumContacts() && trace_count < MAX_CONTACTS; i++)
+    if (the_mesh.getContactByIdx(i, c) && c.type == ADV_TYPE_REPEATER && c.out_path_len != OUT_PATH_UNKNOWN &&
+        2 * (c.out_path_len & 63) + 1 <= TRACE_MAX_HOPS)
+      trace_items[trace_count++] = i;
+}
+
+static void hashName(char* dest, int sz, uint8_t hash) {   // a repeater's name from its 1-byte hash, else hex
+  ContactInfo c;
+  for (int i = 0; i < the_mesh.getNumContacts(); i++)
+    if (the_mesh.getContactByIdx(i, c) && c.id.pub_key[0] == hash && c.type == ADV_TYPE_REPEATER) {
+      snprintf(dest, sz, "%s", c.name);
+      return;
+    }
+  snprintf(dest, sz, "[%02x]", hash);
+}
+
+static void fmtSnr(char* v, int sz, int8_t snr4, bool waiting) {
+  if (snr4 != -128) snprintf(v, sz, "%+.1fdB", snr4 / 4.0f);
+  else snprintf(v, sz, waiting ? "..." : "-");
+}
+
+static void drawTrace() {
+  drawStatus("6 TST TRACE");
+  if (!trace_view) {
+    buildTraceItems();
+    listMove(sel, top, trace_count, Key{K_NONE});
+    for (int r = 0; r < BODY_ROWS && top + r < trace_count; r++) {
+      ContactInfo c;
+      the_mesh.getContactByIdx(trace_items[top + r], c);
+      char v[10];
+      int hops = c.out_path_len & 63;
+      if (hops) snprintf(v, sizeof(v), "%d hop%s", hops, hops == 1 ? "" : "s"); else strcpy(v, "direct");
+      drawRow(r, top + r == sel, c.name, v);
+    }
+    if (trace_count == 0) {
+      drawRow(1, false, "No repeater with a path.", NULL, C_DIM);
+      drawRow(2, false, "3 RPT > D finds neighbours.", NULL, C_DIM);
+    }
+    drawHints("ENT trace        ` back");
+    return;
+  }
+  // each row: a node on the path and how it heard the previous one; the last row is us
+  bool waiting = client.testRunning() == TEST_TRACE;
+  int n = min(client.trace_nhops, BODY_ROWS - 1);
+  for (int i = 0; i < n; i++) {
+    char name[24], v[12];
+    hashName(name, sizeof(name), client.trace_hops[i].hash);
+    fmtSnr(v, sizeof(v), client.trace_hops[i].snr4, waiting);
+    drawRow(i, false, name, v);
+  }
+  char v[12];
+  fmtSnr(v, sizeof(v), client.trace_final4, waiting);
+  drawRow(n, false, "me", v);
+  if (client.tests[TEST_TRACE].state == TS_STOPPED) drawRow(n + 1, false, "No reply.", NULL, C_ALERT);
+  drawHints(waiting ? "Waiting...       ` stop" : "ENT again        ` back");
+}
+
+static void keyTrace(const Key& k) {
+  if (k.code == K_BACK) {
+    if (client.testRunning() == TEST_TRACE) { client.stopTest(); return; }
+    if (trace_view) { trace_view = false; return; }
+    go(S_TEST);
+    test_page = TP_RUN;
+    sel = TEST_TRACE;
+    return;
+  }
+  if (!trace_view) {
+    buildTraceItems();
+    listMove(sel, top, trace_count, k);
+    if (k.code != K_ENTER || trace_count == 0) return;
+    ContactInfo c;
+    the_mesh.getContactByIdx(trace_items[sel], c);
+    if (!client.startTrace(c)) { toast("Trace failed"); return; }
+    trace_view = true;
+  } else if (k.code == K_ENTER && client.testRunning() < 0) {
+    trace_view = false;   // pick again
+  }
+}
+
 static void drawTest() {
   drawStatus(TP_TITLES[test_page]);
   if (!radio_ok) {
@@ -1076,7 +1218,8 @@ static void drawTest() {
   }
   if (test_page == TP_PACKETS) drawPackets();
   else if (test_page == TP_STATS) drawStats();
-  else drawRssi();
+  else if (test_page == TP_RSSI) drawRssi();
+  else drawRun();
 }
 
 static void keyTest(const Key& k) {
@@ -1093,6 +1236,8 @@ static void keyTest(const Key& k) {
       pkt_open = client.pktTotal() - 1 - sel;
       screen = S_PACKET;   // not go(): the list keeps its cursor
     }
+  } else if (test_page == TP_RUN) {
+    keyRun(k);
   } else if (test_page == TP_STATS && k.code == K_CHAR && (k.ch == 'r' || k.ch == 'R')) {
     client.resetStats();
     loop_max_ms = 0;
@@ -1342,6 +1487,7 @@ void screenDraw() {
     case S_TEST:      drawTest(); break;
     case S_PACKET:    drawPacket(); break;
     case S_QUICK:     drawQuick(); break;
+    case S_TRACE:     drawTrace(); break;
   }
 }
 
@@ -1382,6 +1528,7 @@ void screenKey(const Key& k) {
     case S_TEST:      keyTest(k); break;
     case S_PACKET:    keyPacket(k); break;
     case S_QUICK:     keyQuick(k); break;
+    case S_TRACE:     keyTrace(k); break;
   }
   if (screen != S_REGION) from_settings = false;
 }

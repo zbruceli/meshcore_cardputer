@@ -175,6 +175,7 @@ void ChatClient::logStatus() {
 
 void ChatClient::loop() {
   checkDMRetries();
+  testTick();
   if (air_min_count == 0 || millis() - air_min_at >= 60000) {   // TX airtime once a minute, for the last hour
     air_min_at = millis();
     air_min[air_min_count++ % 60] = the_mesh.getTotalAirTime();
@@ -458,4 +459,123 @@ bool ChatClient::addDiscovered(int i) {
   if (!the_mesh.addContact(c)) return false;
   saveContacts();
   return true;
+}
+
+// ---- test tab, part 2: tests that transmit ----
+// Hear me: zero-hop discovery x3, 30 s apart (do repeaters hear us from here?). Echo: "test n/3" on a channel x3,
+// 30 s apart, counting repeaters re-sending each ([heard N]). Three rounds: the local mesh dislikes test traffic. SDR: zero-hop advert x10, 5 s apart, for
+// scripts/sdr_burst.py. Trace: one trace packet to a repeater and back, SNR at every hop.
+
+#define TEST_GAP_MS      30000   // between discovery / channel sends
+#define TEST_SDR_GAP_MS  5000
+#define TEST_TAIL_MS     20000   // after the last send: replies and echoes still arriving
+
+bool ChatClient::startTest(int kind, int chan) {
+  if (test_kind >= 0 || kind == TEST_TRACE) return false;
+  TestResult& r = tests[kind];
+  memset(&r, 0, sizeof(r));
+  r.state = TS_RUNNING;
+  r.rounds = kind == TEST_SDR ? 10 : 3;
+  r.best_in4 = r.best_out4 = -128;
+  test_kind = kind;
+  test_chan = chan;
+  test_next = millis();
+  hear_nkeys = 0;
+  return true;
+}
+
+void ChatClient::stopTest() {
+  if (test_kind < 0) return;
+  tests[test_kind].state = TS_STOPPED;
+  trace_tag = 0;
+  test_kind = -1;
+}
+
+void ChatClient::testCollect() {   // what the previous round got
+  TestResult& r = tests[test_kind];
+  if (test_kind == TEST_HEAR) {
+    if (num_discovered) r.ok++;
+    for (int i = 0; i < num_discovered; i++) {
+      Discovered& d = discovered[i];
+      r.best_in4 = max(r.best_in4, d.snr_in4);
+      r.best_out4 = max(r.best_out4, d.snr_out4);
+      int k = 0;
+      while (k < hear_nkeys && memcmp(hear_keys[k], d.pub_key, 4) != 0) k++;
+      if (k == hear_nkeys && hear_nkeys < MAX_DISCOVERED) memcpy(hear_keys[hear_nkeys++], d.pub_key, 4);
+    }
+    r.count = hear_nkeys;
+  } else if (test_kind == TEST_ECHO) {
+    for (int i = msgCount() - 1; i >= 0; i--) {
+      Msg* m = msgAt(i);
+      if (!m->out || m->sender_ts != test_echo_ts || m->conv[0] != CONV_CHANNEL) continue;
+      if (m->attempt) { r.ok++; r.count += m->attempt; }
+      break;
+    }
+  }
+}
+
+void ChatClient::testTick() {
+  if (test_kind < 0) return;
+  TestResult& r = tests[test_kind];
+  if (test_kind == TEST_TRACE) {   // the reply arrives in onTraceRecv
+    if ((int32_t)(millis() - trace_until) > 0) stopTest();
+    return;
+  }
+  if ((int32_t)(millis() - test_next) < 0) return;
+  if (r.round > 0) testCollect();
+  if (r.round == r.rounds) { r.state = TS_DONE; test_kind = -1; return; }
+  r.round++;
+  bool ok = true;
+  if (test_kind == TEST_HEAR) {
+    startDiscovery();
+  } else if (test_kind == TEST_ECHO) {
+    char s[24];
+    snprintf(s, sizeof(s), "test %d/%d", r.round, r.rounds);
+    ok = sendChannel(test_chan, s);
+    if (ok) test_echo_ts = msgAt(msgCount() - 1)->sender_ts;
+  } else {
+    ok = sendAdvert(false);
+  }
+  if (!ok) { stopTest(); return; }
+  bool last = r.round == r.rounds;
+  if (test_kind == TEST_SDR) test_next = millis() + (last ? 0 : TEST_SDR_GAP_MS);
+  else test_next = millis() + (last ? TEST_TAIL_MS : TEST_GAP_MS);
+}
+
+// Path: our stored path to the repeater, the repeater, then the same way back. 1-byte hashes (as the app's
+// default trace). Each node on it adds the SNR it heard the packet with; the last hop's transmission reaches us.
+bool ChatClient::startTrace(const ContactInfo& c) {
+  if (test_kind >= 0 || c.out_path_len == OUT_PATH_UNKNOWN) return false;
+  int hs = (c.out_path_len >> 6) + 1, n = c.out_path_len & 63;
+  if (2 * n + 1 > TRACE_MAX_HOPS) return false;
+  uint8_t path[TRACE_MAX_HOPS];
+  int len = 0;
+  for (int i = 0; i < n; i++) path[len++] = c.out_path[i * hs];
+  path[len++] = c.id.pub_key[0];
+  for (int i = n - 1; i >= 0; i--) path[len++] = c.out_path[i * hs];
+  the_mesh.getRNG()->random((uint8_t*)&trace_tag, 4);
+  mesh::Packet* pkt = the_mesh.createTrace(trace_tag, 0, 0);
+  if (!pkt) return false;
+  the_mesh.sendDirect(pkt, path, len);
+  for (int i = 0; i < len; i++) trace_hops[i] = { path[i], -128 };
+  trace_nhops = len;
+  trace_final4 = -128;
+  TestResult& r = tests[TEST_TRACE];
+  memset(&r, 0, sizeof(r));
+  r.state = TS_RUNNING;
+  r.round = r.rounds = 1;
+  test_kind = TEST_TRACE;
+  trace_until = millis() + 8000 + 2000 * len;
+  return true;
+}
+
+void ChatClient::onTraceRecv(mesh::Packet* pkt, uint32_t tag, uint32_t auth_code, uint8_t flags,
+                             const uint8_t* path_snrs, const uint8_t* path_hashes, uint8_t path_len) {
+  if (!trace_tag || tag != trace_tag || test_kind != TEST_TRACE) return;
+  for (int i = 0; i < trace_nhops && i < pkt->path_len; i++) trace_hops[i].snr4 = (int8_t)path_snrs[i];
+  trace_final4 = (int8_t)(pkt->getSNR() * 4);
+  tests[TEST_TRACE].ok = 1;
+  tests[TEST_TRACE].state = TS_DONE;
+  trace_tag = 0;
+  test_kind = -1;
 }

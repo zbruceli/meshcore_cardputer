@@ -40,7 +40,7 @@ Ranked by importance against effort. Every release must pass the upgrade rules i
 | 5 | ✅ **GPS standby:** the GPS drew ~30 mA even with GPS clock off; now in CASIC standby (`$PCAS12`) when off and for 6 h between re-syncs. Screen-off idle 150 → 120 mA (meter) | High: ~+25 % battery for everyone | ½ day |
 | 6 | **Low battery and power off:** warning, cut-off, deep sleep on long G0 press, wake on G0 | High | 1 day |
 | 7 | **Light sleep** with the screen off, wake on LoRa DIO1 / keyboard (G11); measured 150 → ~40 mA possible; Bluetooth-off case first; measure ≥ 24 h idle, no missed messages | High, but riskiest (BLE, radio IRQ) | 2–3 days |
-| 8 | **Test tab, part 2:** hear-me (zero-hop), echo test on `#test`, trace path, SDR burst | Medium-high | 1½ days |
+| 8 | ✅ **Test tab, part 2:** 4th page `6 TST RUN`: hear me (discovery x3, 30 s), echo on `#test` (x3, 30 s), trace to a repeater and back (SNR per hop), SDR burst (zero-hop advert x10, 5 s) | Medium-high | 1½ days |
 | 9 | ✅ **Quick replies:** 8 saved messages; `Enter` on an empty compose line lists them, `1`–`8` puts one in the compose line, `Enter` sends; edited in SET > Quick replies; stored in `/quick`. Cheap stand-in for voice input, which doesn't fit on this board | Medium: fast one-handed replies | 1 day |
 | 10 | ✅ **GPS location:** `GPS < off / clock / location >`; short sessions (fix in ~5–35 s, HDOP ≤ 2), every 10 min in location mode; "0 My location" in quick replies sends a `geo:` link; SET My location + Loc in adverts; distance/direction on contacts | Low-medium | 1 day |
 | 11 | **Known limitations:** app-sent messages missing from device history (and back); BLE name updates only after reboot | Low-medium | 1 day, needs engine hooks |
