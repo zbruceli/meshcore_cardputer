@@ -73,7 +73,7 @@ static const EditField FIELDS[] = {
   { "SET Name",      "Your name on the mesh:",       "Others see this name.",    31 },
   { "Add channel",   "#hashtag or private name:",    "#name: key from the name", 30 },
   { "Add channel",   "Secret key (base64 or hex):",  "16 or 32 byte key",        64 },
-  { "SET Frequency", "Frequency in MHz:",            "868.000 to 923.000",       10 },
+  { "SET Freq",      "Frequency in MHz:",            "868.000 to 923.000",       10 },
   { "SET Clock",     "Local date and time:",         "YYYY-MM-DD HH:MM",         16 },
   { "Quick reply",   "Quick reply text:",            "Empty removes it.",        QUICK_LEN - 1 },
 };

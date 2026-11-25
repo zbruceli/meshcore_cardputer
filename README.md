@@ -79,7 +79,8 @@ also keeps the phone pairing. After an update with M5Burner or esptool, pair the
 | `Enter` / `` ` `` / `Del` | Select or send / back / delete |
 | G0 button | Press: send an advert (announce yourself). Hold 3 s: power off; press again to turn on |
 
-The status bar shows the screen, unread messages (`*3`), the signal of the last packet, battery and clock. The
+The status bar shows the screen, unread messages (`*3`), a map pin while the GPS is fully on (location mode or
+the wardrive logger; an outline until it has a fix), the signal of the last packet, battery and clock. The
 screen dims at half the **Screen off** time and goes dark after it; the key that wakes it does nothing else.
 Destructive actions (delete, leave, factory reset) need their key pressed twice.
 

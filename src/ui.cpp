@@ -1,6 +1,7 @@
 #include "ui.h"
 #include "target.h"
 #include "chat_client.h"
+#include "wardrive.h"
 
 const uint8_t BRIGHTNESS_LEVELS[4] = { 32, 80, 160, 255 };
 const uint16_t SCREEN_OFF_SECS[6] = { 15, 30, 60, 120, 300, 0 };
@@ -31,12 +32,14 @@ static uint8_t batt_pct = 0;
 
 // ---------------------------------------------------------------- primitives
 
-// Status bar: title (12 chars) | unread | signal | battery | clock, with thin dividers between the right-hand groups.
+// Status bar: title (11 chars) | unread | GPS | signal | battery | clock, with thin dividers between the right-hand
+// groups. x: title 2-89, unread 92-115, GPS 118-124, signal 129-144, battery 151-190, clock 197-236.
+// No charging mark: the charger's status pins aren't wired to the ESP32, and the battery voltage can't tell.
 void drawStatus(const char* title) {
   canvas.fillRect(0, 0, SCR_W, ROW_H, C_FG);
   canvas.setTextColor(C_BG);
-  char t[13];
-  toAscii(t, title, 12);
+  char t[12];
+  toAscii(t, title, 11);
   canvas.drawString(t, 2, 0);
 
   int unread = 0;
@@ -44,7 +47,21 @@ void drawStatus(const char* title) {
   if (unread) {
     char u[6];
     snprintf(u, sizeof(u), "*%d", unread > 99 ? 99 : unread);
-    canvas.drawString(u, 100, 0);
+    canvas.drawString(u, 92, 0);
+  }
+
+  // GPS fully on (location mode or the wardrive logger): a map pin, filled once it has a current fix
+  if (prefs.gps == GPS_MODE_LOC || wd.on) {
+    bool fix = gps_pos.at && millis() - gps_pos_ms < (wd.on ? 5000UL : 900000UL);
+    if (fix) {
+      canvas.fillCircle(121, 5, 3, C_BG);
+      canvas.fillTriangle(118, 6, 124, 6, 121, 13, C_BG);
+      canvas.drawPixel(121, 5, C_FG);
+    } else {
+      canvas.drawCircle(121, 5, 3, C_BG);
+      canvas.drawLine(118, 7, 121, 13, C_BG);
+      canvas.drawLine(124, 7, 121, 13, C_BG);
+    }
   }
 
   // RSSI of the last packet heard, as 4 bars
@@ -61,9 +78,9 @@ void drawStatus(const char* title) {
   canvas.drawFastVLine(149, 3, 10, C_BG);
 
   char s[12];
-  snprintf(s, sizeof(s), "%3d%%", batt_pct);
+  snprintf(s, sizeof(s), "%d%%", batt_pct);
   canvas.setTextColor(batt_pct <= 10 ? C_ALERT : C_BG);
-  canvas.drawString(s, 154, 0);
+  canvas.drawString(s, 191 - 8 * strlen(s), 0);
   canvas.drawFastVLine(192, 3, 10, C_BG);
 
   canvas.setTextColor(C_BG);
@@ -264,6 +281,7 @@ static void batteryCheck() {
   static uint8_t warned = 0, low_reads = 0;
   int mv = board.getBattMilliVolts();
   batt_pct = board.battPercent();
+
   if (mv > 2500 && mv < BATT_EMPTY_MV) {
     if (++low_reads >= 3) powerOffScreen(true);
   } else {

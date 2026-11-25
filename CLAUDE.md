@@ -59,7 +59,9 @@ src/wardrive.*       wardrive logger (test tab LOG page): repeaters heard + GPS 
   wake-up banner starts the next session (`gpsLoop()` in main.cpp). `prefs.gps` = off / clock / location.
 - SD card shares the LoRa SPI bus (CS 12, kept high). Mounted (`SD`, FAT32 only, exFAT is off in the framework)
   only while the wardrive logger runs: ~11 KB heap. Don't drive G46 (not a Cap power enable, per newer ports).
-- With the GPS tracking, the radio's noise floor reads ~6 dB higher (−111 → −105 dBm indoors).
+- GPS awake = LoRa noise floor +4 dB across 902–928 MHz (the receiver itself, not its UART), plus a 6.5 MHz comb
+  (903.5/910.0/916.5/923.0 MHz) outside every preset channel. Keep GPS sessions short; the wardrive logger hears
+  ~4 dB less (measured 2026-11-25, receive-only sweeps; SD card, display and Bluetooth add nothing).
 - "Not heard back" indoors is the location, not the firmware: RTL-SDR (`scripts/sdr_burst.py`) shows our TX within
   ~0.5 dB of a T-Deck Plus, which fails from the same spot too. On a hillside (v0.3.0) both pass the Bay Area health
   check (84–87 % vs 82 %). Judge radio changes on same-spot alternating SDR runs or several sends, outdoors.

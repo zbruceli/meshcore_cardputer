@@ -53,11 +53,20 @@ class Screen:
                         self.img.putpixel((x + c, y + r), color)
             x += 8
 
-    def status(self, title, unread=0, bars=3, batt=87, clock="14:32"):
+    def status(self, title, unread=0, bars=3, batt=87, clock="14:32", gps=None):
+        # as drawStatus() in ui.cpp: title 2-89, unread 92, GPS pin 118-124, bars 129-144, battery 151-190, clock 197
         self.d.rectangle([0, 0, W - 1, ROW_H - 1], fill=FG)
-        self.text(title[:12], 2, 0, BG)
+        self.text(title[:11], 2, 0, BG)
         if unread:
-            self.text("*%d" % unread, 100, 0, BG)
+            self.text("*%d" % unread, 92, 0, BG)
+        if gps == "fix":
+            self.d.ellipse([118, 2, 124, 8], fill=BG)
+            self.d.polygon([(118, 6), (124, 6), (121, 13)], fill=BG)
+            self.img.putpixel((121, 5), FG)
+        elif gps == "search":
+            self.d.ellipse([118, 2, 124, 8], outline=BG)
+            self.d.line([118, 7, 121, 13], fill=BG)
+            self.d.line([124, 7, 121, 13], fill=BG)
         for b in range(4):
             h = 3 + b * 3
             if b < bars:
@@ -65,7 +74,8 @@ class Screen:
             else:
                 self.d.rectangle([129 + b * 4, 13, 129 + b * 4 + 2, 13], fill=BG)
         self.d.line([149, 3, 149, 12], fill=BG)
-        self.text("%3d%%" % batt, 154, 0, BG)
+        t = "%d%%" % batt
+        self.text(t, 191 - 8 * len(t), 0, BG)
         self.d.line([192, 3, 192, 12], fill=BG)
         self.text(clock, 197, 0, BG)
 
@@ -132,7 +142,7 @@ s.hints("Pick your region   ENT ok")
 s.save("setup_region")
 
 s = Screen()   # 1 MSG inbox
-s.status("1 MSG", unread=3)
+s.status("1 MSG", unread=3, gps="fix")
 for r, (name, right) in enumerate([("#bayarea", "*2"), ("@Alice", "*1"), ("Public", "4m"), ("@Bob", "1h"),
                                    ("#hiking", "3h"), ("#test", "1d")]):
     s.row(r, name, right, sel=(r == 0))
@@ -282,7 +292,7 @@ s.hints("ENT again        ` back")
 s.save("test_trace")
 
 s = Screen()   # 6 TST LOG: wardrive logger running
-s.status("6 TST LOG")
+s.status("6 TST LOG", gps="fix")
 s.row(0, "Logging 0:12:31", "842 rec")
 s.row(1, "GPS ~5m 37.77490,-122.41940")
 for r, (k, v) in enumerate([("Hilltop", "+6.5 +14"), ("Ridge-2", "-3.0  +5"), ("Summit", "-7.8  +0")]):
@@ -292,7 +302,7 @@ s.hints("` stop   D ping   , / page")
 s.save("test_log")
 
 s = Screen()   # 3 RPT > M: radar of contacts with a location (north up, us in the middle)
-s.status("MAP")
+s.status("MAP", gps="fix")
 s.row(0, "Hilltop", "4.2km NE")
 top, bot = BODY_Y + ROW_H, HINT_Y - 2
 cy, r, cx = (top + bot) // 2, (bot - top) // 2 - 2, W // 2
