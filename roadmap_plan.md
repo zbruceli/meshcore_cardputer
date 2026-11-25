@@ -68,8 +68,8 @@ in hours: a battery run-down test.
 v0.3.2 → v0.4.0 (2026-11-24, esptool at 0x0, release images): all data files byte-identical, settings kept. The
 phone pairing is lost: the merged image fills 0x9000–0xDFFF (NVS, where the Bluetooth bonds live) with 0xFF, so every
 upgrade since v0.3.0 needs re-pairing. Fixed for the web installer (2026-11-24): it writes the four parts at their own
-offsets (`scripts/split_image.py`) and skips NVS; tested with esptool writing the same parts, bond and local keys
-unchanged. M5Burner takes one image at 0x0, so it keeps the re-pair note. M5Burner (erase + v0.3.2, then v0.4.0 without
+offsets (`scripts/split_image.py`) and skips NVS; tested with esptool writing the same parts (bond and local keys
+unchanged) and with the live installer page in Chrome (v0.4.1, phone reconnected without re-pairing). M5Burner takes one image at 0x0, so it keeps the re-pair note. M5Burner (erase + v0.3.2, then v0.4.0 without
 erase): same result, data kept, phone re-paired.
 
 ## Risks
