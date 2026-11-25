@@ -117,17 +117,22 @@ static void flushBatch() {
   nbatch = 0;
 }
 
+// Packets name a repeater by 1, 2 or 3 bytes of its key (the sender's path hash size): "45" and "45ab" are the
+// same repeater. Match on the shorter id and keep the longer one.
+static bool sameId(const uint8_t* a, int alen, const uint8_t* b, int blen) { return memcmp(a, b, min(alen, blen)) == 0; }
+
 static void noteRecent(const uint8_t* hash, int len, int8_t snr4) {
   uint32_t ms = millis();
   WdHeard* r = NULL;
   for (int i = 0; i < WD_RECENT && !r; i++)
-    if (wd.recent[i].len == len && memcmp(wd.recent[i].hash, hash, len) == 0) r = &wd.recent[i];
+    if (wd.recent[i].len && sameId(wd.recent[i].hash, wd.recent[i].len, hash, len)) r = &wd.recent[i];
+  if (r && r->len > len) { hash = r->hash; len = r->len; }
   if (r && ms - r->ms < WD_RECENT_MS && r->snr4 > snr4) { r->ms = ms; return; }   // keep the minute's best
   if (!r) {   // a free slot, else the oldest
     r = &wd.recent[0];
     for (int i = 1; i < WD_RECENT; i++) if (!wd.recent[i].len || (r->len && wd.recent[i].ms < r->ms)) r = &wd.recent[i];
   }
-  memcpy(r->hash, hash, len);
+  memmove(r->hash, hash, len);
   r->len = len;
   r->snr4 = snr4;
   r->ms = ms;
@@ -144,7 +149,8 @@ void wdPacket(const mesh::Packet& pkt, float snr, float rssi) {
   if (!wdFixOk()) return;
   for (int i = 0; i < nbatch; i++) {
     WdSample& s = batch[i];
-    if (s.len == hs && memcmp(s.hash, hash, hs) == 0) {
+    if (sameId(s.hash, s.len, hash, hs)) {
+      if (hs > s.len) { memcpy(s.hash, hash, hs); s.len = hs; }
       if (snr4 > s.snr4) { s.snr4 = snr4; s.rssi = (int8_t)rssi; s.type = pkt.getPayloadType(); }
       return;
     }
