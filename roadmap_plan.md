@@ -20,6 +20,8 @@ Scope is in `PRD.md`, code and rules in `CLAUDE.md`.
   field test is still to do.
 - **v0.4.1 ✅:** the phone app's GPS switch (custom var `gps`) maps to SET > GPS. First build sent for M5Burner
   review (v0.4.0 was never listed there).
+- **v0.5.0 🟡 (bumped, not tagged):** items 6, 8, 12 (logger) and 13 below: power off and battery warnings, test
+  tab Run page, wardrive logger, map, GPS pin in the status bar. Upgrade test and field run before tagging.
 
 Checks: ✅ DMs both ways with `[ok]` (T-Deck Plus) · ✅ app on the same device sends/receives on channels ·
 ✅ settings and data survive reboots · ✅ ~104 KB heap free with Bluetooth on · ✅ TX power matches a T-Deck
