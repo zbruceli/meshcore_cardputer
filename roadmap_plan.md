@@ -16,8 +16,8 @@ Scope is in `PRD.md`, code and rules in `CLAUDE.md`.
 - **v0.3.1 / v0.3.2 ✅:** boots without the Cap (`RADIO FAIL`), startup screen during first-boot formatting,
   pinned M5Unified/M5GFX. Web installer on GitHub Pages; listed on [M5Burner](https://burner.m5stack.com/U3W4DS).
 - **v0.4.0 ✅:** items 1–5, 9 and 10 below: safe saves, colour schemes, GPS clock and location, GPS standby, test tab,
-  quick replies. Released after indoor device checks; the hillside field test and the M5Burner upgrade path
-  are still to do.
+  quick replies. Released after indoor device checks; upgrade tested with esptool and M5Burner; the hillside
+  field test is still to do.
 
 Checks: ✅ DMs both ways with `[ok]` (T-Deck Plus) · ✅ app on the same device sends/receives on channels ·
 ✅ settings and data survive reboots · ✅ ~104 KB heap free with Bluetooth on · ✅ TX power matches a T-Deck
@@ -66,7 +66,8 @@ in hours: a battery run-down test.
 v0.3.2 → v0.4.0 (2026-11-24, esptool at 0x0, release images): all data files byte-identical, settings kept. The
 phone pairing is lost: the merged image fills 0x9000–0xDFFF (NVS, where the Bluetooth bonds live) with 0xFF, so every
 upgrade since v0.3.0 needs re-pairing. Fix candidate: web installer writes the parts separately (skips NVS);
-M5Burner takes one image at 0x0, so it keeps the re-pair note.
+M5Burner takes one image at 0x0, so it keeps the re-pair note. M5Burner (erase + v0.3.2, then v0.4.0 without
+erase): same result, data kept, phone re-paired.
 
 ## Risks
 
