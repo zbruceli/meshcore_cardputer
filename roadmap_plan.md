@@ -18,6 +18,8 @@ Scope is in `PRD.md`, code and rules in `CLAUDE.md`.
 - **v0.4.0 ✅:** items 1–5, 9 and 10 below: safe saves, colour schemes, GPS clock and location, GPS standby, test tab,
   quick replies. Released after indoor device checks; upgrade tested with esptool and M5Burner; the hillside
   field test is still to do.
+- **v0.4.1 ✅:** the phone app's GPS switch (custom var `gps`) maps to SET > GPS. First build sent for M5Burner
+  review (v0.4.0 was never listed there).
 
 Checks: ✅ DMs both ways with `[ok]` (T-Deck Plus) · ✅ app on the same device sends/receives on channels ·
 ✅ settings and data survive reboots · ✅ ~104 KB heap free with Bluetooth on · ✅ TX power matches a T-Deck
