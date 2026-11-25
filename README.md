@@ -23,8 +23,8 @@ and repeaters.
 | **6 TST**: tests that transmit (hear me, echo) | **6 TST**: trace, SNR at every hop there and back |
 | ![Quick replies](docs/screens/quick.png) | ![Edit quick replies](docs/screens/quick_set.png) |
 | Quick replies: `Enter` on an empty line | Edit them in SET > **Quick replies** |
-| ![Wardrive logger](docs/screens/test_log.png) | |
-| **6 TST**: wardrive logger to the SD card | |
+| ![Wardrive logger](docs/screens/test_log.png) | ![Radar](docs/screens/radar.png) |
+| **6 TST**: wardrive logger to the SD card | **3 RPT** > `M`: contacts with a location around you |
 
 ## Features
 
@@ -82,7 +82,9 @@ If the computer doesn't see it: power switch **off**, hold **G0** while plugging
   location**, adds a `geo:` link with your GPS position (it waits for a fix if the last one is old; `` ` `` cancels).
 - **1 MSG:** `A` add a channel (`#name`, or a name then its key), `X` twice to leave or delete.
 - **2 CON:** type to filter. In a contact: `Enter` message, `F` favourite, `R` reset path, `S` share, `X` delete.
-- **3 RPT:** `D` asks nearby repeaters to reply (60 s).
+- **3 RPT:** `D` asks nearby repeaters to reply (60 s). `M` map: contacts with a location around you, north up
+  (squares = repeaters, rings = others, bright = heard in the last day; off-scale ones sit on the edge). `;` `.`
+  pick nearer/farther (name, distance, direction on top), `,` `/` zoom out/in (500 m–200 km), `Enter` details.
 - **4 RAD:** `Enter` flood advert, `Z` zero-hop advert.
 - **6 TST** (turn on with **Test tab** in SET): `,` `/` switch pages. Packets: last 32 in and out, `Enter` for
   path, sender and repeater. Stats: counters, CRC errors, airtime, `R` resets. RSSI: live signal graph (24 s).

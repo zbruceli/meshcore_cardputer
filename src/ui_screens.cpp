@@ -747,7 +747,7 @@ static void drawContacts(bool repeaters) {
     snprintf(hint, sizeof(hint), "Listening %2ds: %d repl%s", client.discoverSecsLeft(), replies, replies == 1 ? "y" : "ies");
   else if (repeaters && client.discoveryRan())
     snprintf(hint, sizeof(hint), "D again  last: %d repl%s", replies, replies == 1 ? "y" : "ies");
-  else if (repeaters) strcpy(hint, "ENT info  D discover  +=new");
+  else if (repeaters) strcpy(hint, "ENT info D disc M map +=new");
   else strcpy(hint, filter[0] ? "ENT info  ` clear filter" : "ENT info  type to filter");
   drawHints(hint);
 }
@@ -770,6 +770,9 @@ static void keyContacts(const Key& k, bool repeaters) {
   } else if (k.code == K_CHAR && (k.ch == 'd' || k.ch == 'D')) {
     client.startDiscovery();
     toast("Asking nearby repeaters");
+  } else if (k.code == K_CHAR && (k.ch == 'm' || k.ch == 'M')) {
+    go(S_RADAR);
+    return;
   }
   if (k.code != K_ENTER || !ncitems) return;
 
@@ -794,6 +797,22 @@ static void keyContacts(const Key& k, bool repeaters) {
   convOfContact(cur_conv, *c);
   contact_back = screen;
   go(S_CONTACT);
+}
+
+// distance (km) and bearing (degrees from north) from (lat1, lon1) to (lat2, lon2)
+static double distBrg(double lat1, double lon1, double lat2, double lon2, double& brg) {
+  double p1 = radians(lat1), p2 = radians(lat2), dl = radians(lon2 - lon1);
+  double a = sq(sin((p2 - p1) / 2)) + cos(p1) * cos(p2) * sq(sin(dl / 2));
+  brg = degrees(atan2(sin(dl) * cos(p2), cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)));
+  if (brg < 0) brg += 360;
+  return 6371.0 * 2 * atan2(sqrt(a), sqrt(1 - a));
+}
+
+static void fmtDist(char* dest, int sz, double km, double brg) {   // "850m NE", "12.3km SW", "140km N"
+  static const char* DIRS[] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+  const char* dir = DIRS[(int)((brg + 22.5) / 45) % 8];
+  if (km < 1) snprintf(dest, sz, "%dm %s", (int)(km * 1000), dir);
+  else snprintf(dest, sz, km < 100 ? "%.1fkm %s" : "%.0fkm %s", km, dir);
 }
 
 static void drawContact() {
@@ -827,14 +846,10 @@ static void drawContact() {
   } else if (c->gps_lat || c->gps_lon) {
     double lat = c->gps_lat / 1e6, lon = c->gps_lon / 1e6, my_lat, my_lon;
     if (myPosition(my_lat, my_lon)) {   // distance and compass direction from us
-      static const char* DIRS[] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
-      double p1 = radians(my_lat), p2 = radians(lat), dl = radians(lon - my_lon);
-      double a = sq(sin((p2 - p1) / 2)) + cos(p1) * cos(p2) * sq(sin(dl / 2));
-      double km = 6371.0 * 2 * atan2(sqrt(a), sqrt(1 - a));
-      double brg = degrees(atan2(sin(dl) * cos(p2), cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)));
-      const char* dir = DIRS[(int)((brg + 360 + 22.5) / 45) % 8];
-      if (km < 1) snprintf(s, sizeof(s), "%dm %s %.3f,%.3f", (int)(km * 1000), dir, lat, lon);
-      else snprintf(s, sizeof(s), km < 100 ? "%.1fkm %s %.3f,%.3f" : "%.0fkm %s %.3f,%.3f", km, dir, lat, lon);
+      double brg, km = distBrg(my_lat, my_lon, lat, lon, brg);
+      char d[16];
+      fmtDist(d, sizeof(d), km, brg);
+      snprintf(s, sizeof(s), "%s %.3f,%.3f", d, lat, lon);
     } else {
       snprintf(s, sizeof(s), "%.4f,%.4f", lat, lon);
     }
@@ -866,6 +881,131 @@ static void keyContact(const Key& k) {
     client.deleteContact(*c);
     toast("Contact deleted");
     go(contact_back);
+  }
+}
+
+// ================================================================ radar: contacts with a location around us
+
+// North up (no compass on this board), us in the middle. Repeaters are filled squares, others rings; bright if
+// heard in the last day. Off-scale nodes sit on the edge in their direction.
+#define RADAR_TOP   (BODY_Y + ROW_H)          // row 0 is the selected node's name and distance
+#define RADAR_BOT   (HINT_Y - 2)
+#define RADAR_CY    ((RADAR_TOP + RADAR_BOT) / 2)
+#define RADAR_R     ((RADAR_BOT - RADAR_TOP) / 2 - 2)   // pixels for the zoom distance
+#define RADAR_CX    (SCR_W / 2)
+static const float RADAR_ZOOMS[] = { 0.5f, 1, 2, 5, 10, 20, 50, 100, 200 };   // km at the ring
+#define NUM_ZOOMS   (int)(sizeof(RADAR_ZOOMS) / sizeof(RADAR_ZOOMS[0]))
+struct RadarItem { uint16_t idx; float dx, dy, km, brg; };   // dx/dy: km east/north of us
+static RadarItem ritems[MAX_CONTACTS];
+static int nritems, radar_zoom = -1;          // -1: pick one when the screen opens
+static uint8_t radar_key[4];                  // the selected node (kept across contact details)
+
+static bool buildRadar() {   // false: we have no position
+  nritems = 0;
+  double my_lat, my_lon;
+  if (!myPosition(my_lat, my_lon)) return false;
+  ContactInfo c;
+  for (int i = 0; i < the_mesh.getTotalContactSlots() && nritems < MAX_CONTACTS; i++) {
+    if (!the_mesh.getContactByIdx(i, c) || c.type == ADV_TYPE_NONE || (!c.gps_lat && !c.gps_lon)) continue;
+    double lat = c.gps_lat / 1e6, lon = c.gps_lon / 1e6, brg;
+    RadarItem& r = ritems[nritems++];
+    r.idx = i;
+    r.km = distBrg(my_lat, my_lon, lat, lon, brg);
+    r.brg = brg;
+    r.dx = r.km * sin(radians(brg));
+    r.dy = r.km * cos(radians(brg));
+  }
+  for (int a = 1; a < nritems; a++)   // nearest first: ; . step outwards
+    for (int b = a; b > 0 && ritems[b].km < ritems[b - 1].km; b--) { RadarItem t = ritems[b]; ritems[b] = ritems[b - 1]; ritems[b - 1] = t; }
+  // keep the selection on the same node
+  sel = 0;
+  for (int i = 0; i < nritems; i++) {
+    the_mesh.getContactByIdx(ritems[i].idx, c);
+    if (memcmp(c.id.pub_key, radar_key, 4) == 0) { sel = i; break; }
+  }
+  if (radar_zoom < 0) {   // fit the nearest three
+    float want = nritems ? ritems[min(nritems, 3) - 1].km : 5;
+    radar_zoom = NUM_ZOOMS - 1;
+    for (int z = 0; z < NUM_ZOOMS; z++) if (RADAR_ZOOMS[z] >= want) { radar_zoom = z; break; }
+  }
+  return true;
+}
+
+static void radarSelect(int i) {
+  ContactInfo c;
+  if (i < 0 || i >= nritems || !the_mesh.getContactByIdx(ritems[i].idx, c)) return;
+  memcpy(radar_key, c.id.pub_key, 4);
+  sel = i;
+}
+
+static void drawRadar() {
+  drawStatus("MAP");
+  if (!buildRadar()) {
+    drawRow(1, false, "Where am I? No position:", NULL, C_DIM);
+    drawRow(2, false, "SET > My location, or set", NULL, C_DIM);
+    drawRow(3, false, "it from the phone app.", NULL, C_DIM);
+    drawHints("` back");
+    return;
+  }
+  float range = RADAR_ZOOMS[radar_zoom];
+  float px_km = RADAR_R / range;
+  canvas.drawCircle(RADAR_CX, RADAR_CY, RADAR_R, C_DIM);
+  canvas.drawCircle(RADAR_CX, RADAR_CY, RADAR_R / 2, C_DIM);
+  canvas.drawFastHLine(RADAR_CX - 3, RADAR_CY, 7, C_FG);   // us
+  canvas.drawFastVLine(RADAR_CX, RADAR_CY - 3, 7, C_FG);
+  canvas.setTextColor(C_DIM);
+  canvas.drawString("N", 2, RADAR_TOP);   // north is up: "N" and an arrow in the corner
+  canvas.drawFastVLine(13, RADAR_TOP + 2, 11, C_DIM);
+  canvas.drawLine(13, RADAR_TOP + 2, 10, RADAR_TOP + 5, C_DIM);
+  canvas.drawLine(13, RADAR_TOP + 2, 16, RADAR_TOP + 5, C_DIM);
+  char s[COLS + 1];
+  snprintf(s, sizeof(s), range < 1 ? "%.0fm" : "%.0fkm", range < 1 ? range * 1000 : range);
+  canvas.drawString(s, SCR_W - 8 * strlen(s) - 2, RADAR_BOT - ROW_H + 2);
+  uint32_t now = client.now();
+  int sx = 0, sy = 0;
+  for (int i = nritems - 1; i >= 0; i--) {   // farthest first, so near ones stay on top
+    const RadarItem& r = ritems[i];
+    ContactInfo c;
+    the_mesh.getContactByIdx(r.idx, c);
+    int x = RADAR_CX + (int)lroundf(r.dx * px_km), y = RADAR_CY - (int)lroundf(r.dy * px_km);
+    bool off = x < 2 || x > SCR_W - 3 || y < RADAR_TOP + 2 || y > RADAR_BOT - 2;
+    x = constrain(x, 2, SCR_W - 3);
+    y = constrain(y, RADAR_TOP + 2, RADAR_BOT - 2);
+    uint16_t col = !off && now - c.lastmod < 86400 ? C_FG : C_DIM;
+    if (off) canvas.drawPixel(x, y, col);
+    else if (c.type == ADV_TYPE_REPEATER) canvas.fillRect(x - 1, y - 1, 3, 3, col);
+    else canvas.drawCircle(x, y, 2, col);
+    if (i == sel) { sx = x; sy = y; }
+  }
+  if (nritems) {
+    canvas.drawRect(sx - 4, sy - 4, 9, 9, C_FG);   // selection
+    ContactInfo c;
+    the_mesh.getContactByIdx(ritems[sel].idx, c);
+    char d[16];
+    fmtDist(d, sizeof(d), ritems[sel].km, ritems[sel].brg);
+    char name[24];
+    snprintf(name, 18, "%s", c.name);
+    drawRow(0, false, name, d);
+  } else {
+    drawRow(0, false, "No contact has a location.", NULL, C_DIM);
+  }
+  drawHints("ENT info ;. pick ,/ zoom");
+}
+
+static void keyRadar(const Key& k) {
+  if (k.code == K_BACK) { radar_zoom = -1; go(S_REPEATERS); return; }
+  if (!buildRadar()) return;
+  if (k.code == K_LEFT && radar_zoom < NUM_ZOOMS - 1) radar_zoom++;   // , zooms out
+  else if (k.code == K_RIGHT && radar_zoom > 0) radar_zoom--;
+  else if (k.code == K_UP && nritems) radarSelect((sel + nritems - 1) % nritems);   // ; nearer
+  else if (k.code == K_DOWN && nritems) radarSelect((sel + 1) % nritems);           // . farther
+  else if (k.code == K_ENTER && nritems) {
+    ContactInfo c;
+    the_mesh.getContactByIdx(ritems[sel].idx, c);
+    radarSelect(sel);
+    convOfContact(cur_conv, c);
+    contact_back = S_RADAR;
+    go(S_CONTACT);
   }
 }
 
@@ -1564,6 +1704,7 @@ void screenDraw() {
     case S_PACKET:    drawPacket(); break;
     case S_QUICK:     drawQuick(); break;
     case S_TRACE:     drawTrace(); break;
+    case S_RADAR:     drawRadar(); break;
   }
 }
 
@@ -1605,6 +1746,7 @@ void screenKey(const Key& k) {
     case S_PACKET:    keyPacket(k); break;
     case S_QUICK:     keyQuick(k); break;
     case S_TRACE:     keyTrace(k); break;
+    case S_RADAR:     keyRadar(k); break;
   }
   if (screen != S_REGION) from_settings = false;
 }

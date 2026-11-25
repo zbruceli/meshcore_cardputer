@@ -291,6 +291,34 @@ s.row(5, "Ping 42s ago: 2 rpt", color=DIM)
 s.hints("` stop   D ping   , / page")
 s.save("test_log")
 
+s = Screen()   # 3 RPT > M: radar of contacts with a location (north up, us in the middle)
+s.status("MAP")
+s.row(0, "Hilltop", "4.2km NE")
+top, bot = BODY_Y + ROW_H, HINT_Y - 2
+cy, r, cx = (top + bot) // 2, (bot - top) // 2 - 2, W // 2
+for rad in (r, r // 2):
+    s.d.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], outline=DIM)
+s.d.line([cx - 3, cy, cx + 3, cy], fill=FG)
+s.d.line([cx, cy - 3, cx, cy + 3], fill=FG)
+s.text("N", 2, top, DIM)
+s.d.line([13, top + 2, 13, top + 12], fill=DIM)
+s.d.line([13, top + 2, 10, top + 5], fill=DIM)
+s.d.line([13, top + 2, 16, top + 5], fill=DIM)
+s.text("5km", W - 8 * 3 - 2, bot - ROW_H + 2, DIM)
+pk = r / 5.0   # px per km at the 5 km zoom
+for dx, dy, rpt, bright in [(3.0, 2.9, True, True), (-2.1, 1.0, True, True), (1.2, -3.6, True, False),
+                            (-0.6, -0.8, False, True), (4.4, -1.5, False, True), (-7.5, 3.2, True, False)]:
+    x, y = cx + round(dx * pk), cy - round(dy * pk)
+    col = FG if bright else DIM
+    if rpt:
+        s.d.rectangle([x - 1, y - 1, x + 1, y + 1], fill=col)
+    else:
+        s.d.ellipse([x - 2, y - 2, x + 2, y + 2], outline=col)
+x, y = cx + round(3.0 * pk), cy - round(2.9 * pk)
+s.d.rectangle([x - 4, y - 4, x + 4, y + 4], outline=FG)
+s.hints("ENT info ;. pick ,/ zoom")
+s.save("radar")
+
 # every colour scheme, labelled, 4 per row
 GAP, LABEL = 8, 20
 cols = 4
