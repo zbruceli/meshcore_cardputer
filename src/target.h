@@ -54,3 +54,6 @@ struct GpsFix { uint32_t time; double lat, lon; float hdop; uint8_t sats; };
 bool gpsRead(GpsFix& fix, bool& woke);
 uint8_t gpsSats();   // satellites used, from the latest GGA (progress while searching)
 mesh::LocalIdentity radio_new_identity();
+// SD card (FAT32, no exFAT) on the LoRa SPI bus: mounted at /sd only while the wardrive logger runs
+bool sdMount();
+void sdUnmount();

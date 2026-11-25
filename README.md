@@ -23,6 +23,8 @@ and repeaters.
 | **6 TST**: tests that transmit (hear me, echo) | **6 TST**: trace, SNR at every hop there and back |
 | ![Quick replies](docs/screens/quick.png) | ![Edit quick replies](docs/screens/quick_set.png) |
 | Quick replies: `Enter` on an empty line | Edit them in SET > **Quick replies** |
+| ![Wardrive logger](docs/screens/test_log.png) | |
+| **6 TST**: wardrive logger to the SD card | |
 
 ## Features
 
@@ -87,10 +89,20 @@ If the computer doesn't see it: power switch **off**, hold **G0** while plugging
   Run: tests that transmit, `Enter` starts, `` ` `` stops. **Hear me**: 3 discovery rounds, how many repeaters
   reply and how well they hear you. **Echo #test**: 3 messages on `#test` (join it first), repeats per message.
   **Trace**: pick a repeater with a known path; SNR at every hop there and back. **SDR burst**: 10 zero-hop
-  adverts, 5 s apart, for `scripts/sdr_burst.py`.
+  adverts, 5 s apart, for `scripts/sdr_burst.py`. Log: wardrive logger, see below.
 - **5 SET:** `,` `/` change, `Enter` edit. **Colours** picks a scheme (see below). **My location**: `Enter` gets
   a fresh fix. **Loc in adverts** shares your position with the mesh (off by default; same setting as the phone
   app). Factory reset needs `Enter` twice.
+
+**Wardrive logger** (6 TST, last page): logs which repeaters you hear where, to an SD card (FAT32; exFAT cards,
+usually over 32 GB, need formatting as FAT32 on a computer). Insert the card, `Enter` starts, `` ` `` stops and
+saves. The GPS stays on while logging (~6 h of battery with the screen off). Listen-only by default: every packet
+that came through a repeater counts for that repeater (best SNR per 30 s or 25 m). `D` adds a ping: a zero-hop
+discovery at most once a minute, after moving 100 m, to learn how well repeaters hear you. The screen shows the
+fix and the best repeaters of the last minute with SNR and margin (how far above what your SF can still decode).
+Files: `meshcore/wd-<date>-<time>.csv` (MeshMapper's column names), written every 30 s. On a computer,
+`python3 scripts/wardrive_kml.py wd-*.csv` makes a map for Google Earth (dots coloured by SNR, lines to repeaters
+with a known location). To add to the MeshMapper community map, pair the MeshMapper phone app instead.
 
 **Phone app:** in the MeshCore app, connect to `MeshCore-<your name>` and enter the **App PIN** from 5 SET (new
 each boot). Messages you send from one side don't show in the other's history; incoming ones show on both.

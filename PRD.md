@@ -39,6 +39,8 @@ repeaters hear them · two friends DMing with delivery confirmation · phone-app
   since reset (CRC errors, flood/direct, airtime incl. last hour, loop time, heap), live RSSI graph. Tests that
   transmit, few rounds and spaced out, never on Public: hear me (zero-hop discovery x3, 30 s), echo on `#test`
   (x3, 30 s, repeats per message), trace to a repeater and back (SNR per hop), SDR burst (zero-hop advert x10, 5 s).
+  Wardrive logger: repeaters heard (last hop of flood packets, best SNR per 30 s / 25 m) with the GPS position, as
+  CSV on the SD card (FAT32; checked before starting); optional zero-hop discovery ping, ≥ 60 s and 100 m apart.
 - **Settings:** region or manual radio parameters, TX power, path hash size, auto-add, Bluetooth on/off and app
   PIN, brightness, colour scheme, screen timeout, beep, quick replies, test tab, GPS mode, my location, location
   in adverts, time zone, clock, factory reset.

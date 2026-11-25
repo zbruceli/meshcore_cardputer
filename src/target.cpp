@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <M5Cardputer.h>
+#include <SD.h>
 #include <utility/PI4IOE5V6408_Class.hpp>
 #include "target.h"
 
@@ -191,6 +192,20 @@ bool gpsRead(GpsFix& fix, bool& woke) {
     }
   }
   return found;
+}
+
+// The card slot shares SCK/MOSI/MISO with the radio (begun by radio_init); every transfer sets its own clock in an SPI
+// transaction, and everything runs in loop(), so the two never overlap. One open file at a time keeps the heap
+// cost to ~10 KB, and only while mounted.
+bool sdMount() {
+  spi.begin(P_LORA_SCLK, P_LORA_MISO, P_LORA_MOSI);   // no-op once the radio has begun it
+  return SD.begin(PIN_SD_CS, spi, 4000000, "/sd", 1) && SD.cardType() != CARD_NONE;
+}
+
+void sdUnmount() {
+  SD.end();
+  pinMode(PIN_SD_CS, OUTPUT);   // deselected, so the card ignores radio traffic
+  digitalWrite(PIN_SD_CS, HIGH);
 }
 
 // Without a working radio (no Cap fitted) its noise can't be read: use the ESP32's hardware RNG instead.

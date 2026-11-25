@@ -3,6 +3,7 @@
 #include "target.h"
 #include "chat_client.h"
 #include "presets.h"
+#include "wardrive.h"
 
 static const Screen TABS[] = { S_INBOX, S_CONTACTS, S_REPEATERS, S_RADIO, S_SETTINGS, S_TEST };   // 6 only if on
 
@@ -919,8 +920,9 @@ static void keyRadio(const Key& k) {
 
 // ================================================================ 6 TST: packets, stats, RSSI (hidden unless on in SET)
 
-enum { TP_PACKETS, TP_STATS, TP_RSSI, TP_RUN, TP_COUNT };
-static const char* TP_TITLES[TP_COUNT] = { "6 TST PKTS", "6 TST STATS", "6 TST RSSI", "6 TST RUN" };
+enum { TP_PACKETS, TP_STATS, TP_RSSI, TP_RUN, TP_LOG, TP_COUNT };
+static const char* TP_TITLES[TP_COUNT] = { "6 TST PKTS", "6 TST STATS", "6 TST RSSI", "6 TST RUN", "6 TST LOG" };
+static uint32_t log_drawn;   // LOG page: redraw once a second
 static int test_page;
 static uint32_t pkt_seen;              // pktTotal() at the last draw: new packets push the cursor down with its packet
 static uint32_t pkt_open;              // seq of the packet shown in S_PACKET
@@ -1209,6 +1211,76 @@ static void keyTrace(const Key& k) {
   }
 }
 
+// ---- LOG page: wardrive logger (wardrive.cpp)
+
+static void idName(char* dest, int sz, const uint8_t* hash, int len) {   // a repeater's name from its id, else hex
+  ContactInfo* c = the_mesh.lookupContactByPubKey(hash, len);
+  if (c) { snprintf(dest, sz, "%s", c->name); return; }
+  int n = snprintf(dest, sz, "[");
+  for (int i = 0; i < len; i++) n += snprintf(dest + n, sz - n, "%02x", hash[i]);
+  snprintf(dest + n, sz - n, "]");
+}
+
+static void drawLog() {
+  char s[COLS + 1], v[16];
+  if (!wd.on) {
+    drawRow(0, false, "Wardrive logger", "off");
+    drawRow(1, false, "Repeaters heard + GPS, to", NULL, C_DIM);
+    drawRow(2, false, "the SD card as CSV.", NULL, C_DIM);
+    drawRow(3, false, "Ping (zero-hop disc.)", wd.ping ? "on" : "off");
+    if (wd.err[0]) drawRow(4, false, wd.err, NULL, C_ALERT);
+    else if (wd.file[0]) {
+      snprintf(v, sizeof(v), "%u rec", (unsigned)wd.records);
+      drawRow(4, false, strrchr(wd.file, '/') + 1, v, C_DIM);
+    } else drawRow(4, false, "Needs an SD card (FAT32).", NULL, C_DIM);
+    drawHints("ENT start  D ping  , / page");
+    return;
+  }
+  uint32_t up = (millis() - wd.started_ms) / 1000;
+  snprintf(s, sizeof(s), "Logging %u:%02u:%02u", (unsigned)(up / 3600), (unsigned)(up / 60 % 60), (unsigned)(up % 60));
+  snprintf(v, sizeof(v), "%u rec", (unsigned)wd.records);
+  drawRow(0, false, s, v);
+  if (wdFixOk()) snprintf(s, sizeof(s), "GPS ~%um %.5f,%.5f", gps_pos.acc_m, gps_pos.lat, gps_pos.lon);
+  else snprintf(s, sizeof(s), "GPS no fix %us %dsat", (unsigned)((millis() - (gps_pos_ms > wd.started_ms ?
+           gps_pos_ms : wd.started_ms)) / 1000), gpsSats());
+  drawRow(1, false, s, NULL, wdFixOk() ? C_FG : C_DIM);
+  // the best repeaters of the last minute: SNR and link margin (how far above what this SF can still decode)
+  int order[WD_RECENT], n = 0;
+  for (int i = 0; i < WD_RECENT; i++)
+    if (wd.recent[i].len && millis() - wd.recent[i].ms < 60000) order[n++] = i;
+  for (int a = 1; a < n; a++)
+    for (int b = a; b > 0 && wd.recent[order[b]].snr4 > wd.recent[order[b - 1]].snr4; b--) {
+      int t = order[b]; order[b] = order[b - 1]; order[b - 1] = t;
+    }
+  float floor_db = snrFloor(client.node().sf);
+  for (int r = 0; r < 3 && r < n; r++) {
+    const WdHeard& h = wd.recent[order[r]];
+    char name[24];
+    idName(name, 18, h.hash, h.len);
+    snprintf(v, sizeof(v), "%+.1f %+3.0f", h.snr4 / 4.0f, h.snr4 / 4.0f - floor_db);
+    drawRow(2 + r, false, name, v);
+  }
+  if (n == 0) drawRow(2, false, "No repeater heard (1 min)", NULL, C_DIM);
+  if (!wd.ping) snprintf(s, sizeof(s), "Ping off (D turns it on)");
+  else if (wd.ping_found == -2) snprintf(s, sizeof(s), "Ping on: waiting for a fix");
+  else if (wd.ping_found == -1) snprintf(s, sizeof(s), "Ping sent, listening...");
+  else snprintf(s, sizeof(s), "Ping %us ago: %d rpt", (unsigned)((millis() - wd.ping_ms) / 1000), wd.ping_found);
+  drawRow(5, false, s, NULL, C_DIM);
+  drawHints("` stop   D ping   , / page");
+}
+
+static void keyLog(const Key& k) {
+  if (k.code == K_CHAR && (k.ch == 'd' || k.ch == 'D')) {
+    wd.ping = !wd.ping;
+    toast(wd.ping ? "Ping on: 1/min, every 100m" : "Ping off: listen only");
+  } else if (k.code == K_ENTER && !wd.on) {
+    toast(wdStart() ? "Logging to SD card" : wd.err);
+  } else if (k.code == K_BACK && wd.on) {
+    wdStop();
+    toast(wd.err[0] ? wd.err : "Log saved");
+  }
+}
+
 static void drawTest() {
   drawStatus(TP_TITLES[test_page]);
   if (!radio_ok) {
@@ -1219,6 +1291,7 @@ static void drawTest() {
   if (test_page == TP_PACKETS) drawPackets();
   else if (test_page == TP_STATS) drawStats();
   else if (test_page == TP_RSSI) drawRssi();
+  else if (test_page == TP_LOG) drawLog();
   else drawRun();
 }
 
@@ -1238,6 +1311,8 @@ static void keyTest(const Key& k) {
     }
   } else if (test_page == TP_RUN) {
     keyRun(k);
+  } else if (test_page == TP_LOG) {
+    keyLog(k);
   } else if (test_page == TP_STATS && k.code == K_CHAR && (k.ch == 'r' || k.ch == 'R')) {
     client.resetStats();
     loop_max_ms = 0;
@@ -1255,6 +1330,7 @@ bool screenTick() {
     if (!gps_req) { loc_wait = false; toast("No GPS fix: try outdoors"); return true; }
     return false;
   }
+  if (screen == S_TEST && test_page == TP_LOG && millis() - log_drawn >= 1000) { log_drawn = millis(); return true; }
   // RSSI page: sample 10x a second while it's on screen
   if (screen != S_TEST || test_page != TP_RSSI || !radio_ok) return false;
   uint32_t t = millis();

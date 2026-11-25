@@ -281,6 +281,16 @@ for r, (k, v) in enumerate([("Ridge-2", "+5.5dB"), ("Hilltop", "+2.0dB"), ("Ridg
 s.hints("ENT again        ` back")
 s.save("test_trace")
 
+s = Screen()   # 6 TST LOG: wardrive logger running
+s.status("6 TST LOG")
+s.row(0, "Logging 0:12:31", "842 rec")
+s.row(1, "GPS ~5m 37.77490,-122.41940")
+for r, (k, v) in enumerate([("Hilltop", "+6.5 +14"), ("Ridge-2", "-3.0  +5"), ("Summit", "-7.8  +0")]):
+    s.row(2 + r, k, v)
+s.row(5, "Ping 42s ago: 2 rpt", color=DIM)
+s.hints("` stop   D ping   , / page")
+s.save("test_log")
+
 # every colour scheme, labelled, 4 per row
 GAP, LABEL = 8, 20
 cols = 4

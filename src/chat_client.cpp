@@ -1,6 +1,7 @@
 #include <helpers/TxtDataHelpers.h>
 #include "chat_client.h"
 #include "target.h"
+#include "wardrive.h"
 
 
 ChatClient client;
@@ -129,6 +130,7 @@ void ChatClient::packetIn(const uint8_t* raw, int len, float snr) {
   mesh::Packet pkt;
   if (!pkt.readFrom(raw, len)) return;
   logPacket(pkt, len, false, snr);
+  wdPacket(pkt, snr, radio_driver.getLastRSSI());
   int hops = pkt.getPathHashCount();
   if (pkt.isRouteFlood() && hops > 0) {
     uint8_t hs = pkt.getPathHashSize();

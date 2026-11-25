@@ -8,6 +8,7 @@
 #include "target.h"
 #include "chat_client.h"
 #include "ui.h"
+#include "wardrive.h"
 
 // Same objects and setup order as MeshCore's companion_radio main.cpp: the official engine serves the phone app
 // over Bluetooth, and the device UI (ChatClient + ui) is its listener.
@@ -67,7 +68,9 @@ void bluetoothApply() {   // on only once onboarded (no app-driven TX before a r
 #define GPS_SETTLE_MS    20000UL  // take the best position after this long even if HDOP stays above 2
 uint8_t gps_state = GPS_OFF;
 GpsPos gps_pos;
+uint32_t gps_pos_ms;     // millis() of gps_pos
 bool gps_req;
+static bool gps_track;   // wardrive logger: one long session, a position every second
 static uint32_t gps_start, gps_first_valid, gps_last_t, gps_wake_at, gps_fix_ms, gps_clock_ms;
 static uint8_t gps_stable;
 
@@ -89,6 +92,7 @@ static void gpsStart() {   // also wakes it from standby; the banner that follow
 }
 
 void gpsApply() {
+  if (gps_track) return;   // the logger keeps it on; its mode applies when the logger stops
   if (prefs.gps) gpsStart();
   else if (!gps_req) gpsIdle(GPS_CLOCK_SECS);
 }
@@ -97,6 +101,12 @@ void gpsRequest() {
   if (gps_pos.at && client.now() - gps_pos.at < 60) return;   // fresh enough
   gps_req = true;
   if (gps_state != GPS_SEARCH) gpsStart();
+}
+
+void gpsTrack(bool on) {
+  gps_track = on;
+  if (on) { if (gps_state != GPS_SEARCH) gpsStart(); }
+  else gpsApply();   // back to the mode's sessions (or standby)
 }
 
 uint32_t gpsSearchSecs() { return gps_state == GPS_SEARCH ? (millis() - gps_start) / 1000 : 0; }
@@ -128,6 +138,7 @@ static void gpsSetPosition(const GpsFix& f) {
   gps_pos.lon = f.lon;
   gps_pos.acc_m = (uint16_t)constrain(f.hdop * 5.0f, 2.0f, 999.0f);   // rough: HDOP x ~5 m receiver error
   gps_pos.at = f.time;
+  gps_pos_ms = millis();
   if (Serial) Serial.printf("GPS position, hdop %.1f, %d sats\n", f.hdop, f.sats);
   if (prefs.gps != GPS_MODE_LOC) return;   // requests in other modes don't move the node's location
   // the node's location (adverts if shared, the phone app); saved only after a real move, to spare the flash
@@ -166,7 +177,16 @@ static void gpsLoop() {
       gps_clock_ms = ms;
       if (Serial) Serial.printf("GPS clock set: %u\n", (unsigned)f.time);
     }
-    if (!want_pos && gps_stable >= 2) {
+    if (gps_track) {   // every fix once two agree; not the node's location (that would save every 50 m)
+      if (gps_stable >= 2) {
+        gps_pos.lat = f.lat;
+        gps_pos.lon = f.lon;
+        gps_pos.acc_m = (uint16_t)constrain(f.hdop * 5.0f, 2.0f, 999.0f);
+        gps_pos.at = f.time;
+        gps_pos_ms = ms;
+        gps_req = false;
+      }
+    } else if (!want_pos && gps_stable >= 2) {
       gpsIdle(GPS_CLOCK_SECS);
     } else if (want_pos && gps_stable >= 3 && (f.hdop <= GPS_GOOD_HDOP || ms - gps_first_valid > GPS_SETTLE_MS)) {
       gpsSetPosition(f);
@@ -174,6 +194,7 @@ static void gpsLoop() {
     }
     return;
   }
+  if (gps_track) return;   // no timeout while logging: it keeps looking
   bool hot = gps_fix_ms && ms - gps_fix_ms < 4 * 3600000UL;
   if (ms - gps_start > (gps_req ? GPS_REQ_MS : hot ? GPS_HOT_MS : GPS_COLD_MS)) {
     if (Serial) Serial.println("GPS: no fix, retry later");
@@ -204,6 +225,7 @@ static void deepSleep() {
 }
 
 void powerOff() {
+  wdStop();
   storeFlush();
   if (radio_ok) radio.sleep(false);       // cold sleep, TCXO off
   digitalWrite(P_LORA_NSS, HIGH);         // keep the radio deselected while the ESP32 sleeps
@@ -283,6 +305,7 @@ void loop() {
   rtc_clock.tick();
 
   gpsLoop();
+  if (radio_ok && prefs.onboarded) wdLoop();
 
   storeLoop();
   bool display_off = uiLoop();
